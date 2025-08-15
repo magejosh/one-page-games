@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>WILDS OF AETHER — Open World + JRPG Tactics (single file)</title>
+<style>
+  :root{
+    --bg:#0d0f14;--ink:#e6ebff;--muted:#a6b2d1;--panel:#141826;--panel2:#0f1320;
+    --hi:#6be675;--warn:#ffcc66;--bad:#ff6b6b;--acc:#8ecaff;
+  }
+  html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 50% -200px,#151a2a,#0b0e16 65%);color:var(--ink);font:14px/1.35 system-ui,Segoe UI,Arial,sans-serif}
+  #wrap{display:grid;grid-template-rows:auto 1fr auto;height:100%}
+  #topbar{display:flex;gap:10px;align-items:center;padding:8px 10px;background:linear-gradient(#151a26,#0d111c);border-bottom:1px solid #293047}
+  #topbar .stat{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:10px;background:#101423;border:1px solid #20263a}
+  #topbar .bar{width:140px;height:8px;border-radius:8px;background:#1a2033;overflow:hidden}
+  #topbar .fill{height:100%}
+  #topbar button{margin-left:auto;background:#18223a;border:1px solid #2a3654;color:var(--ink);padding:7px 10px;border-radius:8px;cursor:pointer}
+  #main{display:grid;grid-template-columns:1fr 320px;min-height:0}
+  #stage{position:relative;min-width:0;min-height:0;overflow:hidden;background:#0a0d14}
+  canvas{image-rendering:pixelated}
+  #game{position:absolute;inset:0}
+  #minimap{position:absolute;left:10px;top:56px;width:150px;height:150px;border:1px solid #2a3046;background:#0a0d14;border-radius:6px}
+  #quickbar{position:absolute;right:10px;top:56px;display:flex;gap:6px}
+  #quickbar button{padding:7px 10px;border:1px solid #2a3046;background:#151d31;color:#d9e4ff;border-radius:8px;cursor:pointer}
+  #right{background:var(--panel);border-left:1px solid #293047;display:flex;flex-direction:column;min-width:0}
+  #tabs{display:flex;border-bottom:1px solid #293047}
+  #tabs button{flex:1;padding:9px;background:var(--panel2);color:var(--ink);border:0;cursor:pointer;font-weight:700;border-right:1px solid #293047}
+  #tabs button.active{background:#1a2236;color:#a7d4ff}
+  #panel{padding:10px;overflow:auto}
+  .section{margin:10px 0;padding:10px;border:1px solid #2a3046;border-radius:10px;background:#0f1424}
+  .row{display:flex;justify-content:space-between;margin:4px 0}
+  .small{color:var(--muted)}
+  .item{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border:1px solid #2a3046;background:#0e1423;border-radius:8px}
+  .btn{padding:4px 8px;border:1px solid #2a3046;background:#17233a;color:var(--ink);border-radius:6px;cursor:pointer}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  #log{height:120px;background:#0c101b;border-top:1px solid #293047;padding:6px;overflow:auto}
+  #toast{position:fixed;right:10px;top:10px;background:#0f141f;border:1px solid #2a3046;padding:8px 10px;border-radius:10px;display:none;z-index:30}
+  /* battle hud */
+  #battleHUD{position:absolute;left:10px;right:10px;bottom:10px;display:none;gap:10px;z-index:5}
+  #battleHUD .card{background:#10162a;border:1px solid #2a3046;border-radius:10px;padding:8px;display:flex;gap:8px;align-items:center}
+  #battleHUD .actions .btn{margin-right:6px}
+  .hp{background:linear-gradient(90deg,#ff6b6b,#ff946b)}
+  .sta{background:linear-gradient(90deg,#7ed957,#63ffa7)}
+  .xp{background:linear-gradient(90deg,#66b3ff,#8aa8ff)}
+  /* overlay */
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:40}
+  #dialog{width:min(760px,92vw);max-height:88vh;overflow:auto;background:#0f131d;border:1px solid #2a3046;border-radius:14px;padding:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  #dialog h1{margin:.2rem 0 6px 0}
+  .kbd{display:inline-block;padding:1px 6px;border:1px solid #3b4661;border-bottom-width:2px;border-radius:6px;background:#151a27;font-weight:700}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid #345;border-radius:999px;background:#101621;color:#9bdcff;margin:2px}
+  .center{display:flex;gap:8px;justify-content:center;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <div class="stat">♥ HP <div class="bar"><div id="hpbar" class="fill hp" style="width:100%"></div></div></div>
+    <div class="stat">⚡ Stamina <div class="bar"><div id="stabar" class="fill sta" style="width:100%"></div></div></div>
+    <div class="stat">⭐ XP <div class="bar"><div id="xpbar" class="fill xp" style="width:0%"></div></div></div>
+    <div class="stat small" id="clock">Day 1 • 06:00</div>
+    <div class="stat small" id="vitals">Hunger: 0 • Thirst: 0</div>
+    <button id="btnHelp">Help / Controls</button>
+  </div>
+
+  <div id="main">
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <canvas id="minimap"></canvas>
+      <div id="quickbar">
+        <button id="btnInv">Inventory (I)</button>
+        <button id="btnCraft">Craft (C)</button>
+        <button id="btnSkills">Skills (K)</button>
+        <button id="btnSave">Save</button>
+        <button id="btnLoad">Load</button>
+        <button id="btnNew">New</button>
+        <button id="btnMap">Map (M)</button>
+      </div>
+      <div id="battleHUD">
+        <div class="card" id="unitCard"></div>
+        <div class="card actions">
+          <b>Actions:</b>
+          <button class="btn" id="actMove"  title="[1]">Move</button>
+          <button class="btn" id="actAttack" title="[2]">Attack</button>
+          <button class="btn" id="actAbility" title="[3]">Ability</button>
+          <button class="btn" id="actItem"  title="[4]">Item</button>
+          <button class="btn" id="actWait"  title="[Space]/[5]">Wait</button>
+          <button class="btn" id="actFlee"  title="[6]">Flee</button>
+        </div>
+        <div class="card" id="turnCard">Turn: —</div>
+      </div>
+      <div id="toast"></div>
+    </div>
+    <div id="right">
+      <div id="tabs">
+        <button data-tab="journal" class="active">Journal</button>
+        <button data-tab="inventory">Inventory</button>
+        <button data-tab="skills">Skills</button>
+        <button data-tab="crafting">Crafting</button>
+      </div>
+      <div id="panel"></div>
+    </div>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<!-- START & HELP -->
+<div id="overlay"><div id="dialog">
+  <h1>Wilds of Aether</h1>
+  <p class="small">Explore, gather, craft, dive into dungeons, and fight turn-based tactical battles.</p>
+  <div class="section">
+    <b>Controls</b><br/>
+    <span class="pill">Move <span class="kbd">WASD</span>/<span class="kbd">Arrows</span></span>
+    <span class="pill">Gather <span class="kbd">F</span></span>
+    <span class="pill">Enter Dungeon <span class="kbd">Enter</span></span>
+    <span class="pill">Zoom <span class="kbd">Z</span>/<span class="kbd">X</span></span>
+    <span class="pill">Inventory <span class="kbd">I</span></span>
+    <span class="pill">Crafting <span class="kbd">C</span></span>
+    <span class="pill">Skills <span class="kbd">K</span></span>
+    <span class="pill">Map <span class="kbd">M</span></span>
+  </div>
+  <div class="section">
+    <b>Battle Hotkeys</b><br/>
+    <span class="pill">1 Move</span><span class="pill">2 Attack</span>
+    <span class="pill">3 Ability</span><span class="pill">4 Item</span>
+    <span class="pill">5 / Space Wait</span><span class="pill">6 Flee</span>
+  </div>
+  <div class="section">
+    <b>World Seed</b><br/>
+    <input id="seedInput" style="width:100%;padding:8px;border-radius:8px;border:1px solid #2a3046;background:#0e1320;color:#cfe3ff" placeholder="leave blank for random"/>
+  </div>
+  <div class="center">
+    <button class="btn" id="startBtn">Start New World</button>
+    <button class="btn" id="continueBtn">Continue Save</button>
+    <button class="btn" id="dlgClose">Close</button>
+  </div>
+</div></div>
+
+<script>
+/*====================== UTIL / RNG ======================*/
+function XorShift(seed=2463534242){let x=seed|0;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return (x>>>0)/4294967296}}
+function seededRNG(seedStr){let h=2166136261>>>0;for(let i=0;i<seedStr.length;i++){h^=seedStr.charCodeAt(i);h=Math.imul(h,16777619)>>>0}return XorShift(h)}
+function lerp(a,b,t){return a+(b-a)*t} function clamp(v,a,b){return v<a?a:(v>b?b:v)}
+function ValueNoise2D(seed){const r=seededRNG(seed),p=new Uint8Array(512);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){const j=(r()*256)|0;[p[i],p[j]]=[p[j],p[i]]}for(let i=0;i<256;i++)p[i+256]=p[i];const g=new Float32Array(256);for(let i=0;i<256;i++)g[i]=r();const F=t=>t*t*(3-2*t);const H=(x,y)=>p[(x+p[y&255])&255];return (x,y)=>{const xi=Math.floor(x),yi=Math.floor(y),tx=x-xi,ty=y-yi;const a=g[H(xi,yi)],b=g[H(xi+1,yi)],c=g[H(xi,yi+1)],d=g[H(xi+1,yi+1)];const u=F(tx),v=F(ty);return lerp(lerp(a,b,u),lerp(c,d,u),v)*2-1}}
+/*====================== CONSTANTS ======================*/
+const TILE={WATER:0,SAND:1,GRASS:2,FOREST:3,MOUNTAIN:4,DUNGEON:5};
+const COLOR={0:'#0c2b47',1:'#cdbd7e',2:'#2d6b39',3:'#164f2c',4:'#7b8091',5:'#6e3a8a'};
+const RES={NONE:0,TREE:1,STONE:2,HERB:3,ORE:4,BERRY:5};
+const KEY={}; let TILE_SIZE=24;
+/*====================== STATE ======================*/
+const Game={seed:'',rng:null,world:null,player:null,entities:[],time:{minutes:6*60,day:1},hunger:0,thirst:0,xp:0,level:1,
+  inDungeon:false,dungeon:null,state:'overworld',camera:{x:0,y:0},uiTab:'journal',showMap:false,_stepTimer:null,_timeTimer:null};
+const Skills={Survival:{xp:0,lvl:1},Woodcutting:{xp:0,lvl:1},Mining:{xp:0,lvl:1},Foraging:{xp:0,lvl:1},Cooking:{xp:0,lvl:1},Crafting:{xp:0,lvl:1},
+  Melee:{xp:0,lvl:1},Archery:{xp:0,lvl:1},Magic:{xp:0,lvl:1}};
+const Equip={weapon:null,armor:null}; const Inventory=[];
+/*====================== WORLD GEN ======================*/
+function genWorld(seed){
+  const rng=seededRNG(seed),noiseE=ValueNoise2D(seed+'e'),noiseM=ValueNoise2D(seed+'m');
+  const W=128,H=128,tiles=new Uint8Array(W*H),res=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){for(let x=0;x<W;x++){
+    const e=(noiseE(x*.065,y*.065)*.55+noiseE(x*.13,y*.13)*.27+noiseE(x*.26,y*.26)*.18+1)/2;
+    const m=(noiseM(x*.07,y*.07)*.5+noiseM(x*.14,y*.14)*.3+noiseM(x*.28,y*.28)*.2+1)/2;
+    let t=TILE.GRASS; if(e<.30)t=TILE.WATER; else if(e<.35)t=TILE.SAND; else if(e>.74)t=TILE.MOUNTAIN; else if(m>.63)t=TILE.FOREST;
+    tiles[y*W+x]=t;
+    if(t===TILE.FOREST && rng()<.25)res[y*W+x]=RES.TREE;
+    else if(t===TILE.MOUNTAIN && rng()<.18)res[y*W+x]=RES.STONE;
+    else if((t===TILE.GRASS||t===TILE.FOREST)&&rng()<.08)res[y*W+x]=RES.HERB;
+    else if(t===TILE.MOUNTAIN && rng()<.08)res[y*W+x]=RES.ORE;
+    else if((t===TILE.GRASS||t===TILE.SAND)&&rng()<.05)res[y*W+x]=RES.BERRY;
+  }}
+  // dungeons
+  let placed=0; while(placed<12){const x=(rng()*W)|0,y=(rng()*H)|0;const t=tiles[y*W+x];if(t!==TILE.WATER&&t!==TILE.MOUNTAIN){tiles[y*W+x]=TILE.DUNGEON;placed++}}
+  // pick spawn
+  let sx=64,sy=64; for(let i=0;i<300;i++){const x=(rng()*W)|0,y=(rng()*H)|0;if(tiles[y*W+x]!==TILE.WATER&&tiles[y*W+x]!==TILE.MOUNTAIN){sx=x;sy=y;break}}
+  return {w:W,h:H,tiles,res,spawn:{x:sx,y:sy}}
+}
+/*====================== DUNGEON GEN ======================*/
+function genDungeon(seed,depth=1){
+  const rng=seededRNG(seed+'dg'+depth),W=28,H=18,g=new Uint8Array(W*H).fill(0);
+  const carve=(x,y)=>{if(x>1&&y>1&&x<W-2&&y<H-2)g[y*W+x]=1}
+  let x=clamp((rng()*W)|0,2,W-3),y=clamp((rng()*H)|0,2,H-3)
+  for(let i=0;i<900;i++){carve(x,y);const d=(rng()*4)|0;if(d===0)x++;if(d===1)x--;if(d===2)y++;if(d===3)y--;x=clamp(x,2,W-3);y=clamp(y,2,H-3)}
+  for(let i=0;i<3;i++){let ax=(rng()*W)|0,ay=(rng()*H)|0;if(g[ay*W+ax]===1)g[ay*W+ax]=i===0?2:3} // stairs
+  for(let i=0;i<5;i++){let cx=(rng()*W)|0,cy=(rng()*H)|0;if(g[cy*W+cx]===1)g[cy*W+cx]=4}
+  const enemies=[]; for(let i=0;i<8;i++){const ex=(rng()*W)|0,ey=(rng()*H)|0;if(g[ey*W+ex]===1)enemies.push({x:ex,y:ey,kind:makeEnemy(depth,rng)})}
+  return {w:W,h:H,grid:g,depth,enemies}
+}
+/*====================== ITEMS/ENEMIES ======================*/
+let ID=1; const newItem=(b)=>Object.assign({id:ID++,qty:1,type:'misc',name:'Item',tags:[]},b)
+const addItem=(it)=>{const ex=Inventory.find(i=>i.name===it.name&&i.type===it.type);if(ex)ex.qty+=(it.qty||1);else Inventory.push(it);toast(`+${it.qty||1} ${it.name}`)}
+const removeItemByName=(name,qty=1)=>{const it=Inventory.find(i=>i.name===name);if(!it||it.qty<qty)return false;it.qty-=qty;if(it.qty<=0)Inventory.splice(Inventory.indexOf(it),1);return true}
+const countItem=(name)=>{const it=Inventory.find(i=>i.name===name);return it?it.qty:0}
+function randWeapon(tier=1,rng=Game.rng){const b=[{n:'Shortsword',atk:3,r:1,k:'melee'},{n:'Axe',atk:3,r:1,k:'melee'},{n:'Spear',atk:2,r:2,k:'melee'},{n:'Bow',atk:2,r:3,k:'ranged'},{n:'Wand',atk:1,r:3,k:'magic'}];const base=b[(rng()*b.length)|0];const atk=base.atk+tier+((rng()*2)|0);const name=`${['Rusty','Plain','Fine','Knightly','Mythic'][Math.min(4,tier)]} ${base.n}`;return newItem({name,type:'weapon',kind:base.k,atk,range:base.r,qty:1})}
+function randArmor(t=1){const b=[{n:'Cloth',d:1},{n:'Leather',d:2},{n:'Chain',d:3},{n:'Scale',d:4}][Math.min(3,t)];return newItem({name:`${['Worn','Plain','Sturdy','Hardened','Mythic'][Math.min(4,t)]} ${b.n} Armor`,type:'armor',def:b.d+t})}
+function makeEnemy(tier=1,rng=Game.rng){const names=['Slime','Goblin','Wolf','Shade','Bandit'];const n=names[(rng()*names.length)|0];return {name:n,hpMax:8+tier*3+((rng()*5)|0),hp:8+tier*3+((rng()*5)|0),atk:2+tier+((rng()*3)|0),def:1+(tier/2)|0,spd:3+((rng()*3)|0),range:n==='Shade'?2:1,ai:n==='Shade'?'skirmish':'brawl',tier}}
+/*====================== PLAYER ======================*/
+function newPlayer(x,y){return {x,y,hpMax:30,hp:30,staminaMax:20,stamina:20,spd:4,sight:7,xp:0,lv:1,background:['Wanderer','Scholar','Hunter','Artisan'][Math.floor(Game.rng()*4)]}}
+/*====================== BATTLE ======================*/
+const Battle={active:false,gridW:12,gridH:12,tiles:[],units:[],turnIndex:0,state:'idle',moveRange:null,attackRange:null,selected:null,_origin:null,_ability:null};
+function startBattle(src){Battle.active=true;Game.state='battle';document.getElementById('battleHUD').style.display='flex';Battle.gridW=12;Battle.gridH=12;Battle.tiles=new Uint8Array(Battle.gridW*Battle.gridH).fill(0);for(let i=0;i<30;i++){const x=(Game.rng()*Battle.gridW)|0,y=(Game.rng()*Battle.gridH)|0;Battle.tiles[y*Battle.gridW+x]=(Game.rng()<.2)?1:0}
+  Battle.units=[];Battle.units.push({id:'P',name:'You',hp:Game.player.hp,hpMax:Game.player.hpMax,atk:2+(Skills.Melee.lvl|0),def:1+(Equip.armor?.def||0),range:(Equip.weapon?.range||1),kind:(Equip.weapon?.kind||'melee'),spd:Game.player.spd,team:0,x:1,y:(Battle.gridH/2)|0})
+  const n=2+((Game.rng()*2)|0);for(let i=0;i<n;i++){const ek=src?.enemies?.[i]?.kind||makeEnemy((Game.inDungeon?Game.dungeon.depth:1)+1);const u={id:'E'+i,name:ek.name,hp:ek.hp,hpMax:ek.hpMax,atk:ek.atk,def:ek.def,range:ek.range,spd:ek.spd,team:1,x:Battle.gridW-2,y:((Battle.gridH/(n+1))*(i+1))|0,ai:ek.ai,tier:ek.tier};if(Battle.tiles[u.y*Battle.gridW+u.x]===1)Battle.tiles[u.y*Battle.gridW+u.x]=0;Battle.units.push(u)}
+  Battle.turnIndex=0;Battle.state='select';Battle.selected=Battle.units[0];updateUnitCard();log('A battle begins!')}
+function endBattle(v){document.getElementById('battleHUD').style.display='none';Battle.active=false;Game.state='overworld';if(v){const t=1+(Game.inDungeon?Game.dungeon.depth:0);if(Math.random()<.7)addItem(randWeapon(t));if(Math.random()<.5)addItem(randArmor(t));gainXP(14,'Melee');log('Victory!')}else log('You escaped.')}
+const unitAt=(x,y)=>Battle.units.find(u=>u.hp>0&&u.x===x&&u.y===y)
+const passable=(x,y)=>x>=0&&y>=0&&x<Battle.gridW&&y<Battle.gridH&&Battle.tiles[y*Battle.gridW+x]===0&&!unitAt(x,y)
+const md=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y)
+function computeMoveRange(u){const R=new Set(),Q=[[u.x,u.y,u.spd]],S=new Set([u.x+','+u.y]);while(Q.length){const[x,y,m]=Q.shift();R.add(x+','+y);if(m<=0)continue;for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy,k=nx+','+ny;if(!S.has(k)&&passable(nx,ny)){S.add(k);Q.push([nx,ny,m-1])}}}return R}
+function computeAttackable(u){const R=new Set();for(let y=0;y<Battle.gridH;y++)for(let x=0;x<Battle.gridW;x++)if(md(u,{x,y})<=u.range)R.add(x+','+y);return R}
+function nextTurn(){const alive=Battle.units.filter(u=>u.hp>0).sort((a,b)=>b.spd-a.spd);Battle.units=alive;Battle.turnIndex=(Battle.turnIndex+1)%Battle.units.length;const u=Battle.units[Battle.turnIndex];Battle.state=(u.team===0?'select':'enemy');Battle.selected=(u.team===0?u:null);updateUnitCard();if(u.team===1)enemyAct(u)}
+function attack(att,def){const base=att.atk+(Equip.weapon?.atk||0)+(att.kind==='magic'?(Skills.Magic.lvl|0):0);const dmg=Math.max(1,base-def.def);def.hp=Math.max(0,def.hp-dmg);if(att.team===0)gainXP(6,'Melee');if(def.hp<=0&&Battle.units.every(u=>u.team===1?u.hp<=0:true)){endBattle(true)}}
+function enemyAct(u){const p=Battle.units.find(x=>x.team===0);if(!p){endBattle(false);return}const d=md(u,p);if(d>u.range){const dx=Math.sign(p.x-u.x),dy=Math.sign(p.y-u.y);const tryS=[[dx,0],[0,dy],[dx,dy],[-dx,0],[0,-dy]];for(const[sx,sy]of tryS){if(passable(u.x+sx,u.y+sy)){u.x+=sx;u.y+=sy;break}}}if(md(u,p)<=u.range)attack(u,p);if(p.hp<=0){gameOver();return}setTimeout(nextTurn,200)}
+function updateUnitCard(){const u=Battle.units[Battle.turnIndex];const el=document.getElementById('unitCard');if(!u){el.textContent='—';return}el.innerHTML=`<div><b>${u.name}</b> (${u.team===0?'You':'Enemy'})</div><div class="bar" style="width:140px"><div class="fill hp" style="width:${Math.floor(100*u.hp/u.hpMax)}%"></div></div><div class="small">ATK ${u.atk} DEF ${u.def} RNG ${u.range} SPD ${u.spd}</div>`;document.getElementById('turnCard').textContent=`Turn: ${u.name}`}
+/*====================== SURVIVAL / XP ======================*/
+function tickTime(min=1){if(!Game.player) return; Game.time.minutes+=min;while(Game.time.minutes>=1440){Game.time.minutes-=1440;Game.time.day++;log(`Day ${Game.time.day} dawns.`)}if(Game.state==='overworld'){if((Game.time.minutes%10)===0){Game.hunger=Math.min(100,Game.hunger+1);Game.thirst=Math.min(100,Game.thirst+2);if(Game.thirst>80||Game.hunger>90)Game.player.stamina=Math.max(0,Game.player.stamina-1);if(Game.thirst>=100)Game.player.hp=Math.max(1,Game.player.hp-1)}if(Math.random()<.04)spawnRoamer()}updateBars()}
+const needXP=(lv)=>20+lv*lv*5
+function gainXP(n,skill){Game.xp+=n;if(skill&&Skills[skill]){const S=Skills[skill];S.xp+=n;while(S.xp>=needXP(S.lvl)){S.xp-=needXP(S.lvl);S.lvl++;log(`${skill} reached Lv${S.lvl}`)}}while(Game.xp>=needXP(Game.level)){Game.xp-=needXP(Game.level);Game.level++;Game.player.hpMax+=2;Game.player.staminaMax+=1;log(`You reached Lv${Game.level}`)}updateBars()}
+/*====================== ENTITIES ======================*/
+function spawnRoamer(){const r=Game.rng,px=Game.player.x,py=Game.player.y;for(let t=0;t<40;t++){const x=clamp(px+((r()*16)|0)-8,2,Game.world.w-3),y=clamp(py+((r()*16)|0)-8,2,Game.world.h-3);const tt=Game.world.tiles[y*Game.world.w+x];if(tt!==TILE.WATER&&tt!==TILE.MOUNTAIN){Game.entities.push({type:'roamer',x,y,spd:.25+r()*.3});break}}}
+/*====================== DRAWING ======================*/
+const c=document.getElementById('game'),ctx=c.getContext('2d');const mmCanvas=document.getElementById('minimap'),mm=mmCanvas.getContext('2d')
+function layout(){const stage=document.getElementById('stage');const top=document.getElementById('topbar').offsetHeight;const logH=document.getElementById('log').offsetHeight;const H=window.innerHeight-top-logH;c.width=stage.clientWidth;c.height=H;mmCanvas.width=150;mmCanvas.height=150}
+window.addEventListener('resize',layout)
+let perf={now:0};function loop(t){perf.now=t;requestAnimationFrame(loop)}
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!Game.world||!Game.player){requestAnimationFrame(draw);return;}
+  if(Game.state==='overworld'){drawWorld()}else drawBattle();
+  requestAnimationFrame(draw)
+}
+function drawWorld(){
+  const glow=(Math.sin(perf.now/700)+1)/2;
+  const ts=TILE_SIZE;
+  Game.camera.x=lerp(Game.camera.x,Game.player.x*ts-c.width/2+ts/2,.15)
+  Game.camera.y=lerp(Game.camera.y,Game.player.y*ts-c.height/2+ts/2,.15)
+  const sx=Math.max(0,Math.floor(Game.camera.x/ts)),sy=Math.max(0,Math.floor(Game.camera.y/ts))
+  const ex=Math.min(Game.world.w,sx+Math.ceil(c.width/ts)+2),ey=Math.min(Game.world.h,sy+Math.ceil(c.height/ts)+2)
+  for(let y=sy;y<ey;y++)for(let x=sx;x<ex;x++){
+    const t=Game.world.tiles[y*Game.world.w+x];ctx.fillStyle=COLOR[t];ctx.fillRect(x*ts-Game.camera.x,y*ts-Game.camera.y,ts,ts)
+    if(t!==TILE.WATER){const up=Game.world.tiles[(y-1)*Game.world.w+x]??TILE.WATER;if(up===TILE.WATER){ctx.fillStyle='rgba(0,0,0,.18)';ctx.fillRect(x*ts-Game.camera.x,y*ts-Game.camera.y,ts,4)}}
+    if(t===TILE.WATER){ctx.fillStyle=`rgba(255,255,255,${0.05+glow*0.05})`;ctx.fillRect(x*ts-Game.camera.x,y*ts-Game.camera.y,ts,2)}
+    const r=Game.world.res[y*Game.world.w+x];if(r===RES.TREE){ctx.fillStyle='#0a0';ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12)}
+    if(r===RES.STONE){ctx.fillStyle='#aaa';ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12)}
+    if(r===RES.HERB){ctx.fillStyle='#58d';ctx.fillRect(x*ts-Game.camera.x+8,y*ts-Game.camera.y+8,ts-16,ts-16)}
+    if(r===RES.ORE){ctx.fillStyle='#d9b36b';ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12)}
+    if(r===RES.BERRY){ctx.fillStyle='#c24';ctx.fillRect(x*ts-Game.camera.x+8,y*ts-Game.camera.y+8,ts-16,ts-16)}
+    if(t===TILE.DUNGEON){ctx.strokeStyle='#e7d4ff';ctx.beginPath();ctx.arc(x*ts-Game.camera.x+ts/2,y*ts-Game.camera.y+ts/2,ts/3,0,Math.PI*2);ctx.stroke()}
+  }
+  // entities
+  ctx.fillStyle='#ffd86b';for(const e of Game.entities){ctx.beginPath();ctx.arc(e.x*ts-Game.camera.x+ts/2,e.y*ts-Game.camera.y+ts/2,6,0,Math.PI*2);ctx.fill()}
+  // player
+  ctx.fillStyle='#9bdcff';ctx.fillRect(Game.player.x*ts-Game.camera.x+4,Game.player.y*ts-Game.camera.y+4,ts-8,ts-8)
+  // minimap
+  mm.clearRect(0,0,mmCanvas.width,mmCanvas.height)
+  for(let y=0;y<Game.world.h;y+=2)for(let x=0;x<Game.world.w;x+=2){mm.fillStyle=COLOR[Game.world.tiles[y*Game.world.w+x]];mm.fillRect((x/Game.world.w)*mmCanvas.width,(y/Game.world.h)*mmCanvas.height,2,2)}
+  mm.fillStyle='#fff';mm.fillRect((Game.player.x/Game.world.w)*mmCanvas.width-1,(Game.player.y/Game.world.h)*mmCanvas.height-1,2,2)
+}
+function drawBattle(){ctx.fillStyle='#0b0f17';ctx.fillRect(0,0,c.width,c.height);const ts=44,ox=(c.width-Battle.gridW*ts)/2,oy=(c.height-Battle.gridH*ts)/2;for(let y=0;y<Battle.gridH;y++)for(let x=0;x<Battle.gridW;x++){ctx.fillStyle=Battle.tiles[y*Battle.gridW+x]===0?'#13243b':'#1b2130';ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1)}
+  if(Battle.state==='move'&&Battle.moveRange){ctx.fillStyle='rgba(102,179,255,.25)';for(const k of Battle.moveRange){const[x,y]=k.split(',').map(Number);ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1)}}
+  if(Battle.state==='attack'&&Battle.attackRange){ctx.fillStyle='rgba(255,107,107,.25)';for(const k of Battle.attackRange){const[x,y]=k.split(',').map(Number);ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1)}}
+  for(const u of Battle.units){if(u.hp<=0)continue;ctx.fillStyle=u.team===0?'#9bdcff':'#ff6b8b';ctx.fillRect(ox+u.x*ts+6,oy+u.y*ts+6,ts-12,ts-12);ctx.fillStyle='#300';ctx.fillRect(ox+u.x*ts+4,oy+u.y*ts+4,ts-8,6);ctx.fillStyle='#e55';ctx.fillRect(ox+u.x*ts+4,oy+u.y*ts+4,(ts-8)*(u.hp/u.hpMax),6)}
+  if(Battle.selected){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(ox+Battle.selected.x*ts+2,oy+Battle.selected.y*ts+2,ts-4,ts-4)}
+  Battle._origin={ox,oy,ts}
+}
+/*====================== INPUT ======================*/
+window.addEventListener('keydown',e=>{
+  KEY[e.key]=true;
+  if(Game.state==='battle'){
+    if(e.key==='1'){document.getElementById('actMove').click();e.preventDefault()}
+    if(e.key==='2'){document.getElementById('actAttack').click();e.preventDefault()}
+    if(e.key==='3'){document.getElementById('actAbility').click();e.preventDefault()}
+    if(e.key==='4'){document.getElementById('actItem').click();e.preventDefault()}
+    if(e.key==='5'||e.key===' '){document.getElementById('actWait').click();e.preventDefault()}
+    if(e.key==='6'){document.getElementById('actFlee').click();e.preventDefault()}
+    return; // ignore other hotkeys while in battle
+  }
+  if(e.key==='i'||e.key==='I')openTab('inventory');
+  if(e.key==='c'||e.key==='C')openTab('crafting');
+  if(e.key==='k'||e.key==='K')openTab('skills');
+  if(e.key==='m'||e.key==='M'){Game.showMap=!Game.showMap;toast(Game.showMap?'Map on':'Map off')}
+  if(Game.state==='overworld'){
+    if(e.key==='Enter')tryEnterDungeon();
+    if(e.key==='f'||e.key==='F')tryGather();
+  }
+  if(e.key==='z'||e.key==='Z'){TILE_SIZE=Math.max(12,TILE_SIZE-4)}
+  if(e.key==='x'||e.key==='X'){TILE_SIZE=Math.min(48,TILE_SIZE+4)}
+})
+window.addEventListener('keyup',e=>{KEY[e.key]=false})
+// FIXED: use ox/oy from Battle._origin and true canvas coords
+c.addEventListener('click', e=>{
+  if (Game.state !== 'battle') return;
+  const { ox, oy, ts } = Battle._origin || { ox: 0, oy: 0, ts: 44 };
+  const rect = c.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left - ox) / ts);
+  const y = Math.floor((e.clientY - rect.top  - oy) / ts);
+  onBattleClick(x, y);
+});
+function onBattleClick(x,y){
+  const u=Battle.units[Battle.turnIndex];
+  if(!u||u.team!==0)return;
+  if(Battle._ability==='spark'){
+    const k=x+','+y;
+    if(Battle.attackRange?.has(k)){
+      const t=unitAt(x,y);
+      if(t && t.team!==u.team){
+        const dmg=4+(Skills.Magic.lvl|0);
+        t.hp=Math.max(0,t.hp-dmg);
+        log(`Spark zaps ${t.name} for ${dmg}!`);
+        gainXP(7,'Magic');
+        Battle._ability=null;Battle.state='select';updateUnitCard();
+        if(Battle.units.every(v=>v.team===1?v.hp<=0:true))endBattle(true);
+      }
+    }
+    return;
+  }
+  if(Battle.state==='move'){
+    const k=x+','+y;
+    if(Battle.moveRange.has(k)){u.x=x;u.y=y;Battle.state='select';Battle.selected=u;updateUnitCard()}
+  }else if(Battle.state==='attack'){
+    const k=x+','+y;
+    if(Battle.attackRange.has(k)){
+      const t=unitAt(x,y);
+      if(t&&t.team!==u.team){attack(u,t);updateUnitCard();Battle.state='select'}
+    }
+  }else{
+    const t=unitAt(x,y);
+    if(t&&t.team===0&&t===u)Battle.selected=t;
+  }
+}
+/*====================== OVERWORLD ACTIONS ======================*/
+function movePlayer(dx,dy){
+  if(Game.state!=='overworld')return;
+  const nx=clamp(Game.player.x+dx,0,Game.world.w-1),ny=clamp(Game.player.y+dy,0,Game.world.h-1);
+  const t=Game.world.tiles[ny*Game.world.w+nx];
+  if(t!==TILE.WATER&&!(t===TILE.MOUNTAIN&&Skills.Survival.lvl<2)){
+    Game.player.x=nx;Game.player.y=ny;Game.player.stamina=Math.max(0,Game.player.stamina-.1);
+    const hit=Game.entities.find(e=>e.type==='roamer'&&e.x===nx&&e.y===ny);
+    if(hit){startBattle({type:'overworld'});Game.entities.splice(Game.entities.indexOf(hit),1)}
+  }
+  tickTime(1);
+}
+function tryGather(){
+  const w=Game.world.w,idx=Game.player.y*w+Game.player.x,r=Game.world.res[idx];
+  if(r===RES.TREE){addItem(newItem({name:'Wood',type:'mat',qty:1+(Skills.Woodcutting.lvl>=3?1:0)}));Skills.Woodcutting.xp+=3;Game.world.res[idx]=Math.random()<.5?RES.NONE:RES.TREE;log('Chopped wood.')}
+  else if(r===RES.STONE){addItem(newItem({name:'Stone',type:'mat',qty:1}));Skills.Mining.xp+=3;Game.world.res[idx]=Math.random()<.5?RES.NONE:RES.STONE;log('Mined stone.')}
+  else if(r===RES.ORE){addItem(newItem({name:'Ore',type:'mat',qty:1}));Skills.Mining.xp+=4;Game.world.res[idx]=Math.random()<.4?RES.NONE:RES.ORE;log('Mined ore.')}
+  else if(r===RES.HERB){addItem(newItem({name:'Herb',type:'mat',qty:1}));Skills.Foraging.xp+=2;Game.world.res[idx]=RES.NONE;log('Picked herb.')}
+  else if(r===RES.BERRY){addItem(newItem({name:'Berries',type:'food',qty:1,consumes:{hunger:-8,thirst:-4}}));Skills.Foraging.xp+=2;Game.world.res[idx]=RES.NONE;log('Collected berries.')}
+  else log('Nothing to gather here.');
+  updatePanel();
+}
+function tryEnterDungeon(){
+  const w=Game.world.w,idx=Game.player.y*w+Game.player.x;
+  if(Game.world.tiles[idx]===TILE.DUNGEON){
+    Game.inDungeon=true;
+    Game.dungeon=genDungeon(Game.seed,(Math.hypot(Game.player.x-Game.world.spawn.x,Game.player.y-Game.world.spawn.y)/18|0)+1);
+    log(`You descend into a dungeon (Depth ${Game.dungeon.depth}).`);
+    if(Math.random()<.6)startBattle({type:'dungeon',enemies:Game.dungeon.enemies});
+  }else log('No dungeon here.');
+}
+function step(){
+  if(Game.state==='overworld'){
+    let dx=0,dy=0;if(KEY['ArrowLeft']||KEY['a']||KEY['A'])dx=-1;else if(KEY['ArrowRight']||KEY['d']||KEY['D'])dx=1;
+    if(KEY['ArrowUp']||KEY['w']||KEY['W'])dy=-1;else if(KEY['ArrowDown']||KEY['s']||KEY['S'])dy=1;
+    if(dx||dy)movePlayer(dx,dy);
+    for(const e of Game.entities){
+      if(e.type==='roamer'&&Math.random()<e.spd){
+        e.x+=Math.sign(Game.player.x-e.x)*(Math.random()<.7?1:0);
+        e.y+=Math.sign(Game.player.y-e.y)*(Math.random()<.7?1:0);
+      }
+    }
+  }
+}
+/*====================== HUD / PANELS ======================*/
+function updateBars(){
+  if(!Game.player) return; // guard until init/load
+  document.getElementById('hpbar').style.width=`${Math.floor(100*Game.player.hp/Game.player.hpMax)}%`;
+  document.getElementById('stabar').style.width=`${Math.floor(100*Game.player.stamina/Game.player.staminaMax)}%`;
+  document.getElementById('xpbar').style.width=`${Math.floor(100*Game.xp/needXP(Game.level))}%`;
+  document.getElementById('clock').textContent=`Day ${Game.time.day} • ${String(Math.floor(Game.time.minutes/60)).padStart(2,'0')}:${String(Game.time.minutes%60).padStart(2,'0')}`;
+  document.getElementById('vitals').textContent=`Hunger: ${Game.hunger} • Thirst: ${Game.thirst}`;
+}
+function log(s){const el=document.getElementById('log');el.insertAdjacentHTML('beforeend',`<div>• ${s}</div>`);el.scrollTop=el.scrollHeight}
+function toast(s){const t=document.getElementById('toast');t.textContent=s;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',1400)}
+function openTab(tab){Game.uiTab=tab;document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));updatePanel()}
+function knownRecipes(){const L=[];const push=(key,name,desc,req,make)=>L.push({key,name,desc,require:req,make})
+  push('stick','Stick','x1 Wood ➜ x2 Sticks',[['Wood',1]],()=>addItem(newItem({name:'Stick',type:'mat',qty:2})))
+  push('campfire','Campfire','x3 Wood + x2 Stone ➜ Rest',[['Wood',3],['Stone',2]],()=>addItem(newItem({name:'Campfire',type:'placeable',qty:1})))
+  push('potion','Healing Draught','x2 Herb + x1 Berries ➜ Heals 12',[['Herb',2],['Berries',1]],()=>addItem(newItem({name:'Healing Draught',type:'consumable',qty:1,consumes:{hp:+12}})))
+  if(Skills.Crafting.lvl>=2)push('woodSword','Wooden Sword','x2 Wood + x1 Stick',[['Wood',2],['Stick',1]],()=>addItem(newItem({name:'Wooden Sword',type:'weapon',kind:'melee',atk:3,range:1,qty:1})))
+  if(Skills.Crafting.lvl>=3)push('bow','Short Bow','x2 Wood + x1 Stick',[['Wood',2],['Stick',1]],()=>addItem(newItem({name:'Short Bow',type:'weapon',kind:'ranged',atk:2,range:3,qty:1})))
+  if(Skills.Crafting.lvl>=3)push('leather','Leather Armor','x3 Berries + x2 Herb',[['Berries',3],['Herb',2]],()=>addItem(newItem({name:'Leather Armor',type:'armor',def:3,qty:1})))
+  return L}
+function updatePanel(){
+  const p=document.getElementById('panel');
+  if(!Game.player){p.innerHTML='<div class="section small">Start a new world or load a save.</div>';return;}
+  if(Game.uiTab==='journal'){p.innerHTML=`<div class="section"><div class="row"><b>Background</b><span>${Game.player.background}</span></div><div class="row"><span>Level</span><span>${Game.level} (${Game.xp}/${needXP(Game.level)} xp)</span></div><div class="row"><span>Location</span><span>${Game.inDungeon?`Dungeon ${Game.dungeon?.depth}`:'Overworld'} (${Game.player.x},${Game.player.y})</span></div><div class="row"><span>Equipment</span><span>${Equip.weapon?Equip.weapon.name:'None'} / ${Equip.armor?Equip.armor.name:'Clothes'}</span></div></div><div class="section small">Find <b>purple obelisks</b> to enter dungeons. Press <b>Enter</b>. Press <b>F</b> to gather.</div>`}
+  else if(Game.uiTab==='inventory'){let html='<div class="section"><b>Inventory</b>';for(const it of Inventory){html+=`<div class="item"><div><span style="font-weight:700">${it.name}</span> <span class="small">x${it.qty}</span></div><div>${it.type==='weapon'?`<button class="btn" onclick="equipItem(${it.id})">Equip</button>`:''}${it.type==='armor'?`<button class="btn" onclick="equipItem(${it.id})">Equip</button>`:''}${it.consumes?`<button class="btn" onclick="useItem(${it.id})">Use</button>`:''}<button class="btn" onclick="dropItem(${it.id})">Drop</button></div></div>`}html+='</div>';p.innerHTML=html}
+  else if(Game.uiTab==='skills'){let html='<div class="section"><b>Skills (Learn by Doing)</b>';for(const[k,v]of Object.entries(Skills)){html+=`<div class="row"><span>${k}</span><span>Lv ${v.lvl} (${v.xp}/${needXP(v.lvl)})</span></div>`}html+='</div>';p.innerHTML=html}
+  else if(Game.uiTab==='crafting'){const R=knownRecipes();let html='<div class="section"><b>Crafting</b>';for(const r of R){const can=r.require.every(q=>countItem(q[0])>=q[1]);html+=`<div class="item"><div><b>${r.name}</b> <span class="small">${r.desc}</span></div><div><button class="btn" ${can?'':'disabled'} onclick="craft('${r.key}')">Craft</button></div></div>`}html+='</div>';p.innerHTML=html}
+}
+function craft(key){const r=knownRecipes().find(x=>x.key===key);if(!r)return;for(const q of r.require)removeItemByName(q[0],q[1]);r.make();Skills.Crafting.xp+=5;updatePanel()}
+/* inventory helpers */
+function equipItem(id){const it=Inventory.find(i=>i.id===id);if(!it)return;if(it.type==='weapon')Equip.weapon=it;if(it.type==='armor')Equip.armor=it;log(`Equipped ${it.name}`);updatePanel();updateBars()}
+function useItem(id){const it=Inventory.find(i=>i.id===id);if(!it||!it.consumes)return;Game.player.hp=clamp(Game.player.hp+(it.consumes.hp||0),1,Game.player.hpMax);Game.hunger=clamp(Game.hunger+(it.consumes.hunger||0),0,100);Game.thirst=clamp(Game.thirst+(it.consumes.thirst||0),0,100);it.qty--;if(it.qty<=0)Inventory.splice(Inventory.indexOf(it),1);log(`Used ${it.name}`);updatePanel();updateBars()}
+function dropItem(id){const it=Inventory.find(i=>i.id===id);if(!it)return;it.qty--;if(it.qty<=0)Inventory.splice(Inventory.indexOf(it),1);updatePanel()}
+/*====================== SAVE / LOAD ======================*/
+function saveGame(){if(!Game.player){toast('Nothing to save yet');return}const data={seed:Game.seed,player:Game.player,world:{tiles:Array.from(Game.world.tiles),res:Array.from(Game.world.res),w:Game.world.w,h:Game.world.h,spawn:Game.world.spawn},entities:Game.entities,skills:Skills,inv:Inventory,equip:Equip,time:Game.time,hunger:Game.hunger,thirst:Game.thirst,xp:Game.xp,level:Game.level};localStorage.setItem('wilds_save',JSON.stringify(data));toast('Saved')}
+function loadGame(){const s=localStorage.getItem('wilds_save');if(!s){toast('No save found');return}const d=JSON.parse(s);Object.assign(Game,{seed:d.seed,player:d.player,entities:d.entities,time:d.time,hunger:d.hunger,thirst:d.thirst,xp:d.xp,level:d.level,inDungeon:false});Game.world={w:d.world.w,h:d.world.h,tiles:Uint8Array.from(d.world.tiles),res:Uint8Array.from(d.world.res),spawn:d.world.spawn};Inventory.length=0;for(const it of d.inv)Inventory.push(it);Equip.weapon=d.equip.weapon;Equip.armor=d.equip.armor;for(const k of Object.keys(Skills))Object.assign(Skills[k],d.skills[k]);log('Save loaded.');updatePanel();updateBars()}
+/*====================== HELP / TIMERS ======================*/
+const overlay=document.getElementById('overlay');const openHelp=()=>overlay.style.display='flex';const closeHelp=()=>overlay.style.display='none'
+function startTimers(){
+  if(Game._stepTimer) clearInterval(Game._stepTimer);
+  if(Game._timeTimer) clearInterval(Game._timeTimer);
+  Game._stepTimer = setInterval(step, 90);
+  Game._timeTimer = setInterval(()=>tickTime(1), 700);
+}
+/*====================== BATTLE HUD buttons ======================*/
+document.getElementById('actMove').onclick=()=>{const u=Battle.units[Battle.turnIndex];if(u&&u.team===0){Battle.moveRange=computeMoveRange(u);Battle.state='move';Battle.selected=u;updateUnitCard()}}
+document.getElementById('actAttack').onclick=()=>{const u=Battle.units[Battle.turnIndex];if(u&&u.team===0){Battle.attackRange=computeAttackable(u);Battle.state='attack';Battle.selected=u;updateUnitCard()}}
+document.getElementById('actItem').onclick=()=>{const pot=Inventory.find(i=>i.consumes?.hp);if(pot){useItem(pot.id);updateUnitCard()}else toast('No usable item')}
+document.getElementById('actAbility').onclick=()=>{const u=Battle.units[Battle.turnIndex];if(u&&u.team===0){if(Skills.Magic.lvl>=2){Battle.state='attack';Battle.attackRange=new Set();for(let y=0;y<Battle.gridH;y++)for(let x=0;x<Battle.gridW;x++)if(md(u,{x,y})<=3)Battle.attackRange.add(x+','+y);toast('Select target for SPARK');Battle._ability='spark'}else toast('Raise Magic to Lv2')}}
+document.getElementById('actWait').onclick=()=>nextTurn()
+document.getElementById('actFlee').onclick=()=>endBattle(false)
+/*====================== BUTTONS ======================*/
+document.getElementById('btnHelp').onclick=openHelp
+document.getElementById('dlgClose').onclick=closeHelp
+document.getElementById('startBtn').onclick=()=>{init(true)}
+document.getElementById('continueBtn').onclick=()=>{
+  closeHelp(); layout();
+  if(!draw._started){draw._started=true;requestAnimationFrame(loop);draw()}
+  loadGame(); startTimers(); openTab('journal');
+}
+document.getElementById('btnInv').onclick=()=>openTab('inventory')
+document.getElementById('btnCraft').onclick=()=>openTab('crafting')
+document.getElementById('btnSkills').onclick=()=>openTab('skills')
+document.getElementById('btnSave').onclick=saveGame
+document.getElementById('btnLoad').onclick=()=>{loadGame();startTimers()}
+document.getElementById('btnNew').onclick=()=>init(true)
+document.getElementById('btnMap').onclick=()=>{Game.showMap=!Game.showMap;toast(Game.showMap?'Map on':'Map off')}
+/*====================== GAME OVER ======================*/
+function gameOver(){alert('You collapse… (Game Over). You wake at dawn.');Game.player.hp=Game.player.hpMax;Game.player.stamina=Game.player.staminaMax;Game.player.x=Game.world.spawn.x;Game.player.y=Game.world.spawn.y;Game.entities.length=0;Game.state='overworld';document.getElementById('battleHUD').style.display='none'}
+/*====================== INIT ======================*/
+function init(newWorld=false){
+  layout();
+  if(newWorld){
+    const given=(document.getElementById('seedInput').value||'').trim();
+    Game.seed=given||Math.random().toString(36).slice(2);
+    closeHelp();
+  }
+  if(!draw._started){draw._started=true;requestAnimationFrame(loop);draw()}
+  Game.rng=seededRNG(Game.seed||Math.random().toString(36).slice(2));
+  Game.world=genWorld(Game.seed||'seed');
+  Game.player=newPlayer(Game.world.spawn.x,Game.world.spawn.y);
+  Game.entities=[]; Game.inDungeon=false; Game.time={minutes:6*60,day:1};
+  Game.hunger=0; Game.thirst=0; Game.xp=0; Game.level=1;
+  for(const k of Object.keys(Skills)){Skills[k].xp=0;Skills[k].lvl=1}
+  Inventory.length=0; Equip.weapon=null; Equip.armor=null;
+  addItem(newItem({name:'Stick',type:'mat',qty:2}));
+  addItem(newItem({name:'Berries',type:'food',qty:1,consumes:{hunger:-8,thirst:-4}}));
+  addItem(newItem({name:"Traveler's Cloak",type:'armor',def:1,qty:1}));
+  Equip.armor=Inventory.find(i=>i.name==="Traveler's Cloak");
+  log('Welcome to the Wilds of Aether.'); log(`Seed: ${Game.seed||'(random)'}`);
+  updateBars(); openTab('journal'); startTimers();
+}
+/*====================== BOOT ======================*/
+window.addEventListener('load',()=>{openHelp();layout();updatePanel()})
+</script>
+</body>
+</html>

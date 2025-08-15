@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>WILDS OF AETHER — Zelda-like Open World + JRPG Tactical Combat (1-file)</title>
+<style>
+  :root{
+    --bg:#0e0f13; --ink:#d9e0ee; --muted:#a4acc4; --hi:#6be675; --warn:#ffcc66; --bad:#ff6b6b;
+    --panel:#151822; --panel2:#11131a; --acc:#66b3ff;
+  }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,Segoe UI,Arial,sans-serif}
+  #wrap{display:grid;grid-template-rows:auto 1fr auto; height:100%;}
+  #topbar{
+    display:flex;gap:12px;align-items:center; padding:8px 10px; background:linear-gradient(180deg,#171a22,#0e1016);
+    border-bottom:1px solid #2a2f3e; user-select:none; font-size:14px;
+  }
+  #topbar .stat{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:8px;background:#121520;border:1px solid #242a39}
+  #topbar .bar{width:120px;height:8px;background:#1b2030;border-radius:8px;overflow:hidden}
+  #topbar .fill{height:100%}
+  #topbar button{margin-left:auto;background:#1a2233;border:1px solid #2a354d;color:var(--ink);padding:6px 10px;border-radius:8px;cursor:pointer}
+  #main{display:grid;grid-template-columns:1fr 300px;}
+  #game{display:block;background:#0a0b0f; width:100%; height:100%; image-rendering: pixelated;}
+  #right{
+    background:var(--panel);
+    border-left:1px solid #2a2f3e;
+    display:flex;flex-direction:column;
+  }
+  #tabs{display:flex;border-bottom:1px solid #2a2f3e}
+  #tabs button{flex:1;padding:8px;background:var(--panel2);color:var(--ink);border:0;cursor:pointer;font-weight:600;border-right:1px solid #2a2f3e}
+  #tabs button.active{background:#1a2030;color:#9bdcff}
+  #panel{padding:8px;overflow:auto;font-size:14px}
+  .section{margin:8px 0;padding:8px;border:1px solid #2a2f3e;border-radius:8px;background:#121520}
+  .row{display:flex;align-items:center;justify-content:space-between;margin:4px 0}
+  .small{color:var(--muted);font-size:12px}
+  .item{display:flex;justify-content:space-between;gap:6px;margin:4px 0;padding:4px 6px;background:#0f131d;border:1px solid #202536;border-radius:6px}
+  .item .name{font-weight:600}
+  .btn{padding:3px 7px;border:1px solid #2a2f3e;background:#182032;color:var(--ink);border-radius:6px;cursor:pointer}
+  .btn:disabled{opacity:0.5;cursor:not-allowed}
+  #log{height:120px;background:#0d1018;border-top:1px solid #2a2f3e;padding:6px;overflow:auto;font-size:13px}
+  #overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(2px);
+    display:none;align-items:center;justify-content:center;z-index:10;
+  }
+  #dialog{
+    width:min(720px,90vw);max-height:85vh;overflow:auto;background:#0f131c;border:1px solid #2a2f3e;border-radius:12px;padding:12px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.6)
+  }
+  #dialog h2{margin:6px 0 8px 0}
+  #dialog .close{float:right}
+  .kbd{display:inline-block;padding:1px 6px;border:1px solid #3a455f;border-bottom-width:2px;border-radius:6px;background:#151a27;color:#cdd6f4;font-weight:700}
+  .pill{display:inline-block;padding:1px 6px;border:1px solid #345;border-radius:999px;background:#101621;color:#9bdcff;margin:2px}
+  .hr{height:1px;background:#242a39;margin:10px 0}
+  a{color:#9bdcff}
+  /* Battle HUD */
+  #battleHUD{
+    position:absolute;left:10px;bottom:10px;right:10px;display:none;gap:10px;z-index:6;
+  }
+  #battleHUD .card{background:#101622;border:1px solid #2a2f3e;border-radius:10px;padding:8px;display:flex;gap:6px;align-items:center}
+  #battleHUD .card .title{font-weight:700}
+  #battleHUD .actions .btn{margin-right:6px}
+  #toast{position:fixed;right:10px;top:10px;background:#0f141f;border:1px solid #2a2f3e;padding:8px 10px;border-radius:10px;display:none;z-index:20}
+  /* Buttons row (bottom right) */
+  #quickbar{
+    position:absolute; right:12px; top:52px; display:flex; gap:6px; z-index:4;
+  }
+  #quickbar button{padding:6px 8px;border:1px solid #2a2f3e;background:#142033;color:#d7e2ff;border-radius:8px;cursor:pointer}
+  #minimap{
+    position:absolute; left:10px; top:52px; width:140px; height:140px; border:1px solid #2a2f3e; background:#0a0d14; z-index:4;
+  }
+  .hp{background:linear-gradient(90deg,#ff6b6b,#ff906b)}
+  .sta{background:linear-gradient(90deg,#7ed957,#63ffa7)}
+  .xp{background:linear-gradient(90deg,#66b3ff,#8aa8ff)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar">
+    <div class="stat">♥ HP <div class="bar"><div id="hpbar" class="fill hp" style="width:100%"></div></div></div>
+    <div class="stat">⚡ Stamina <div class="bar"><div id="stabar" class="fill sta" style="width:100%"></div></div></div>
+    <div class="stat">⭐ XP <div class="bar"><div id="xpbar" class="fill xp" style="width:0%"></div></div></div>
+    <div class="stat small" id="clock">Day 1 • 06:00</div>
+    <div class="stat small" id="vitals">Hunger: 0 • Thirst: 0</div>
+    <button id="btnHelp">Help / Controls</button>
+  </div>
+  <div id="main">
+    <div style="position:relative;overflow:hidden">
+      <canvas id="game"></canvas>
+      <canvas id="minimap"></canvas>
+      <div id="quickbar">
+        <button id="btnInv">Inventory (I)</button>
+        <button id="btnCraft">Craft (C)</button>
+        <button id="btnSkills">Skills (K)</button>
+        <button id="btnSave">Save</button>
+        <button id="btnLoad">Load</button>
+        <button id="btnNew">New</button>
+        <button id="btnMap">Map (M)</button>
+      </div>
+      <div id="battleHUD">
+        <div class="card" id="unitCard"></div>
+        <div class="card actions">
+          <span class="title">Actions:</span>
+          <button class="btn" id="actMove">Move</button>
+          <button class="btn" id="actAttack">Attack</button>
+          <button class="btn" id="actAbility">Ability</button>
+          <button class="btn" id="actItem">Item</button>
+          <button class="btn" id="actWait">Wait</button>
+          <button class="btn" id="actFlee">Flee</button>
+        </div>
+        <div class="card" id="turnCard">Turn: —</div>
+      </div>
+      <div id="toast"></div>
+    </div>
+    <div id="right">
+      <div id="tabs">
+        <button data-tab="journal" class="active">Journal</button>
+        <button data-tab="inventory">Inventory</button>
+        <button data-tab="skills">Skills</button>
+        <button data-tab="crafting">Crafting</button>
+      </div>
+      <div id="panel"></div>
+    </div>
+  </div>
+  <div id="log"></div>
+</div>
+
+<!-- Overlay / Dialog -->
+<div id="overlay"><div id="dialog">
+  <button class="btn close" id="dlgClose">✕</button>
+  <h2>Wilds of Aether — Quick Start</h2>
+  <div class="small">
+    <div class="pill">Move: <span class="kbd">WASD</span>/<span class="kbd">Arrows</span></div>
+    <div class="pill">Interact/Forage/Chop/Mine: <span class="kbd">F</span></div>
+    <div class="pill">Enter Dungeon / Use Stairs: <span class="kbd">Enter</span></div>
+    <div class="pill">Inventory: <span class="kbd">I</span></div>
+    <div class="pill">Crafting: <span class="kbd">C</span></div>
+    <div class="pill">Skills: <span class="kbd">K</span></div>
+    <div class="pill">Map Toggle: <span class="kbd">M</span></div>
+  </div>
+  <div class="hr"></div>
+  <p>
+    Explore a procedurally generated world of islands, forests, deserts, and mountains. Forage herbs, chop trees, mine stone, and craft tools.
+    Dungeon entrances appear as ancient obelisks. Step on one and press <b>Enter</b> to delve.
+  </p>
+  <ul>
+    <li><b>Learn-by-Doing:</b> Chop trees to level <i>Woodcutting</i>, fight to raise <i>Melee/Archery/Magic</i>, cook for <i>Cooking</i>, etc. Levels unlock passive bonuses and abilities.</li>
+    <li><b>Survival:</b> Hunger/Thirst grow with time. Campfires let you rest and cook. Keep an eye on stamina.</li>
+    <li><b>JRPG Tactical Battles:</b> Contact an enemy to trigger grid combat. Each turn: move & act. Melee (1-range), bows & spells are ranged.</li>
+  </ul>
+</div></div>
+
+<script>
+/*** UTIL: RNG + Noise *********************************************************/
+function XorShift(seed=123456789){ // small fast RNG
+  let x = seed|0 || 2463534242;
+  return ()=>{x^=x<<13; x^=x>>>17; x^=x<<5; return (x>>>0)/4294967296;}
+}
+function seededRNG(seedStr){
+  let h=2166136261>>>0;
+  for(let i=0;i<seedStr.length;i++){h^=seedStr.charCodeAt(i); h=Math.imul(h,16777619)>>>0;}
+  return XorShift(h);
+}
+function lerp(a,b,t){return a+(b-a)*t}
+function fade(t){return t*t*(3-2*t)}
+function ValueNoise2D(seed="noise"){
+  const rand = seededRNG(seed);
+  const perm = new Uint8Array(512);
+  for(let i=0;i<256;i++) perm[i]=i;
+  for(let i=255;i>0;i--){ const j=(rand()*256)|0; const t=perm[i]; perm[i]=perm[j]; perm[j]=t; }
+  for(let i=0;i<256;i++) perm[i+256]=perm[i];
+  const grad = new Float32Array(256);
+  for(let i=0;i<256;i++) grad[i]=rand();
+  function hash(ix,iy){return perm[(ix+perm[iy & 255])&255]}
+  return function(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y);
+    const tx=x-xi, ty=y-yi;
+    const a=grad[hash(xi,yi)], b=grad[hash(xi+1,yi)], c=grad[hash(xi,yi+1)], d=grad[hash(xi+1,yi+1)];
+    // simple value noise at corners (repeatable values), bilinear interpolate
+    const u = fade(tx), v = fade(ty);
+    const v1 = lerp(a,b,u);
+    const v2 = lerp(c,d,u);
+    return lerp(v1,v2,v)*2-1; // [-1,1]
+  }
+}
+function clamp(v,a,b){return v<a?a:(v>b?b:v)}
+function choice(rng,arr){return arr[(rng()*arr.length)|0]}
+function popcount(n){n=n-((n>>1)&0x55555555);n=(n&0x33333333)+((n>>2)&0x33333333);return(((n+(n>>4))&0x0F0F0F0F)*0x01010101)>>24}
+
+/*** CONSTANTS ****************************************************************/
+const TILE={WATER:0,SAND:1,GRASS:2,FOREST:3,MOUNTAIN:4,DUNGEON:5};
+const TCOL={
+  [TILE.WATER]:'#0a2740',
+  [TILE.SAND] :'#c2ad6e',
+  [TILE.GRASS]:'#2f6f3a',
+  [TILE.FOREST]:'#184e2c',
+  [TILE.MOUNTAIN]:'#6b6f7e',
+  [TILE.DUNGEON]:'#6a3a83',
+}
+const RES={NONE:0,TREE:1,STONE:2,HERB:3,ORE:4, BERRY:5};
+const WORLD_W=128, WORLD_H=128, TILE_SIZE=24;
+const CAMERA_SPEED=0.15;
+const KEY={};
+
+/*** STATE ********************************************************************/
+const Game = {
+  seed: (Math.random().toString(36).slice(2)),
+  rng: null,
+  world: null,
+  player: null,
+  entities: [],
+  time:{minutes:6*60, day:1}, // start at 06:00
+  hunger:0, thirst:0,
+  xp:0, level:1,
+  inDungeon:false, dungeon:null,
+  state:'overworld', // 'overworld' | 'battle'
+  msgLog:[],
+  camera:{x:0,y:0},
+  showMap:false,
+  hot:{},
+  uiTab:'journal',
+  lastSave:null,
+};
+const Skills = {
+  Survival:{xp:0,lvl:1}, Woodcutting:{xp:0,lvl:1}, Mining:{xp:0,lvl:1}, Foraging:{xp:0,lvl:1}, Cooking:{xp:0,lvl:1}, Crafting:{xp:0,lvl:1},
+  Melee:{xp:0,lvl:1}, Archery:{xp:0,lvl:1}, Magic:{xp:0,lvl:1},
+};
+const Equip = {weapon:null, armor:null};
+const Inventory = []; // {id,name,type,qty,atk,def,range,kind,consumes:{hp,thirst,hunger}, tags:[]}
+
+/*** WORLD GEN ****************************************************************/
+function genWorld(seed){
+  const rng = seededRNG(seed);
+  const noise1 = ValueNoise2D(seed+'elev');
+  const noise2 = ValueNoise2D(seed+'moist');
+  const w=WORLD_W,h=WORLD_H;
+  const tiles = new Uint8Array(w*h);
+  const res = new Uint8Array(w*h); // resource
+  const elevScale = 0.065, moistScale = 0.07;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const nx=x*elevScale, ny=y*elevScale;
+      let e = (noise1(nx,ny)*0.55 + noise1(nx*2,ny*2)*0.25 + noise1(nx*4,ny*4)*0.2);
+      let m = (noise2(x*moistScale,y*moistScale)*0.5 + noise2(x*moistScale*2,y*moistScale*2)*0.3 + noise2(x*moistScale*4,y*moistScale*4)*0.2);
+      e = (e+1)/2; m=(m+1)/2;
+      let t = TILE.GRASS;
+      if(e<0.32) t=TILE.WATER;
+      else if(e<0.36) t=TILE.SAND;
+      else if(e>0.72) t=TILE.MOUNTAIN;
+      else if(m>0.62) t=TILE.FOREST;
+      else t=TILE.GRASS;
+      tiles[y*w+x]=t;
+      // resources
+      if(t===TILE.FOREST && rng()<0.25) res[y*w+x]=RES.TREE;
+      else if(t===TILE.MOUNTAIN && rng()<0.18) res[y*w+x]=RES.STONE;
+      else if((t===TILE.GRASS||t===TILE.FOREST) && rng()<0.08) res[y*w+x]=RES.HERB;
+      else if(t===TILE.MOUNTAIN && rng()<0.08) res[y*w+x]=RES.ORE;
+      else if((t===TILE.GRASS||t===TILE.SAND) && rng()<0.05) res[y*w+x]=RES.BERRY;
+    }
+  }
+  // sprinkle dungeons
+  for(let i=0;i<10;i++){
+    const x = (rng()*w)|0, y=(rng()*h)|0;
+    if(tiles[y*w+x]!==TILE.WATER && tiles[y*w+x]!==TILE.MOUNTAIN){
+      tiles[y*w+x]=TILE.DUNGEON;
+    }
+  }
+  // spawn player on a grass tile
+  let px=64,py=64;
+  for(let tries=0;tries<200;tries++){
+    const x=(rng()*w)|0, y=(rng()*h)|0;
+    if(tiles[y*w+x]===TILE.GRASS || tiles[y*w+x]===TILE.SAND || tiles[y*w+x]===TILE.FOREST){px=x;py=y;break;}
+  }
+  return {w,h,tiles,res,spawn:{x:px,y:py}};
+}
+
+/*** DUNGEON GEN **************************************************************/
+function genDungeon(seed,depth=1){
+  const rng = seededRNG(seed+'dung'+depth);
+  const W=28,H=18; // battle-friendly size for screen
+  // 0 wall, 1 floor, 2 stairs up, 3 stairs down, 4 chest
+  const g=new Uint8Array(W*H).fill(0);
+  const carve=(x,y)=>{if(x>1&&y>1&&x<W-2&&y<H-2) g[y*W+x]=1;}
+  // drunkard walk
+  let x= (rng()*W)|0, y=(rng()*H)|0; x=clamp(x,2,W-3); y=clamp(y,2,H-3);
+  for(let i=0;i<1200;i++){
+    carve(x,y);
+    const dir=(rng()*4)|0;
+    if(dir===0)x++; if(dir===1)x--; if(dir===2)y++; if(dir===3)y--;
+    x=clamp(x,2,W-3); y=clamp(y,2,H-3);
+  }
+  // ensure connectivity blobs — open scatter
+  for(let i=0;i<200;i++){ carve((rng()*W)|0,(rng()*H)|0); }
+  // place stairs and some chests
+  let upPlaced=false, downPlaced=false;
+  for(let tries=0;tries<1000 && (!upPlaced || !downPlaced);tries++){
+    const ax=(rng()*W)|0, ay=(rng()*H)|0;
+    if(g[ay*W+ax]===1){
+      if(!upPlaced){g[ay*W+ax]=2; upPlaced=true;}
+      else if(!downPlaced){g[ay*W+ax]=3; downPlaced=true;}
+    }
+  }
+  for(let i=0;i<5;i++){
+    const cx=(rng()*W)|0, cy=(rng()*H)|0;
+    if(g[cy*W+cx]===1) g[cy*W+cx]=4;
+  }
+  // enemies positions
+  const enemies=[];
+  for(let i=0;i<8;i++){
+    const ex=(rng()*W)|0, ey=(rng()*H)|0;
+    if(g[ey*W+ex]===1) enemies.push({x:ex,y:ey, kind:makeEnemy(depth, rng)});
+  }
+  return {w:W,h:H,grid:g,depth,enemies,seed};
+}
+
+/*** ITEMS / ENEMIES **********************************************************/
+let ID_COUNTER=1;
+function newItem(base){return Object.assign({id:ID_COUNTER++, qty:1, type:'misc', name:'Item', tags:[]}, base);}
+function addItem(item){
+  const existing = Inventory.find(i=> i.name===item.name && i.type===item.type && JSON.stringify(i.tags)===JSON.stringify(item.tags));
+  if(existing){ existing.qty += (item.qty||1); }
+  else Inventory.push(item);
+  toast(`+${item.qty||1} ${item.name}`);
+}
+function removeItemByName(name,qty=1){
+  const it=Inventory.find(i=>i.name===name);
+  if(!it || it.qty<qty) return false;
+  it.qty-=qty; if(it.qty<=0){Inventory.splice(Inventory.indexOf(it),1);}
+  return true;
+}
+function countItem(name){ const it=Inventory.find(i=>i.name===name); return it?it.qty:0; }
+
+function tierPrefix(t){ return ['Rusty','Cracked','Worn','Plain','Fine','Knightly','Mythic'][clamp(t,0,6)]}
+function tierSuffix(t){ return ['of Embers','of Frost','of Sparks','of Force','of the Fox','of the Bear','of the Dragon'][clamp(t,0,6)]}
+function randWeapon(tier=1,rng=Game.rng){
+  const bases=[{name:'Shortsword',atk:3,range:1,type:'weapon',kind:'melee'},
+               {name:'Axe',atk:3,range:1,type:'weapon',kind:'melee'},
+               {name:'Spear',atk:2,range:2,type:'weapon',kind:'melee'},
+               {name:'Bow',atk:2,range:3,type:'weapon',kind:'ranged'},
+               {name:'Wand',atk:1,range:3,type:'weapon',kind:'magic'}];
+  const b=choice(rng,bases);
+  const roll=(tier+1)+((rng()*2)|0);
+  const name = `${tierPrefix(tier)} ${b.name} ${rng()<0.6?tierSuffix((tier/1.2)|0):''}`.trim();
+  const atk = b.atk + roll;
+  const mag = b.kind==='magic'? 1+((tier/2)|0):0;
+  return newItem({name, type:'weapon', kind:b.kind, atk, range:b.range, magic:mag, qty:1, tags:['loot']});
+}
+function randArmor(tier=1,rng=Game.rng){
+  const bases=[{name:'Cloth',def:1},{name:'Leather',def:2},{name:'Chain',def:3},{name:'Scale',def:4}];
+  const b=choice(rng,bases);
+  const name = `${tierPrefix(tier)} ${b.name} Armor`;
+  return newItem({name,type:'armor',def:b.def + tier, qty:1, tags:['loot']});
+}
+function makeEnemy(tier=1, rng=Game.rng){
+  const kinds=['Slime','Goblin','Wolf','Shade','Bandit'];
+  const name=choice(rng,kinds);
+  const hp = 8 + tier*3 + ((rng()*5)|0);
+  const atk= 2 + tier + ((rng()*3)|0);
+  const def= 1 + (tier/2)|0;
+  const spd= 3 + (rng()*3)|0;
+  const range = name==='Shade'?2:1;
+  const kind = {name, hpMax:hp, hp, atk, def, spd, range, ai:name==='Shade'?'skirmisher':'brawler', tier};
+  return kind;
+}
+
+/*** PLAYER *******************************************************************/
+function newPlayer(px,py){
+  return {
+    x:px, y:py, hpMax:30, hp:30, staminaMax:20, stamina:20, spd:4, sight:7, xp:0, lv:1,
+    background: choice(Game.rng,['Wanderer','Scholar','Hunter','Artisan']),
+  };
+}
+
+/*** BATTLE SYSTEM ************************************************************/
+const Battle = {
+  active:false, gridW:10, gridH:10, tiles:[], // 0 floor, 1 wall
+  units:[], turnIndex:0, state:'idle', moveRange:[], attackRange:[], selected:null, info:'',
+  fromDungeon:false
+};
+function startBattle(source){ // source: {type:'overworld'|'dungeon', enemies:[enemyKinds], terrain?}
+  Battle.active=true; Game.state='battle';
+  document.getElementById('battleHUD').style.display='flex';
+  // grid: open with some rocks
+  Battle.gridW=12; Battle.gridH=12; Battle.tiles=new Uint8Array(Battle.gridW*Battle.gridH).fill(0);
+  const r=Game.rng;
+  for(let i=0;i<35;i++){
+    const x=(r()*Battle.gridW)|0, y=(r()*Battle.gridH)|0;
+    Battle.tiles[y*Battle.gridW+x]= (r()<0.2?1:0);
+  }
+  // units: player + up to 3 enemies
+  Battle.units=[];
+  Battle.units.push({id:'P', name:'You', hp:Game.player.hp, hpMax:Game.player.hpMax, atk:2+(Skills.Melee.lvl|0), def:1+(Equip.armor?.def||0),
+    range:(Equip.weapon?.range||1), kind:(Equip.weapon?.kind||'melee'), spd:Game.player.spd, team:0, x:1,y:(Battle.gridH/2)|0, acted:false});
+  const ecount = 2 + ((Game.rng()*2)|0);
+  for(let i=0;i<ecount;i++){
+    const ek = source?.enemies?.[i]?.kind || makeEnemy(((Game.inDungeon?Game.dungeon.depth:1)+((Math.hypot(Game.player.x-Game.world.spawn.x,Game.player.y-Game.world.spawn.y)|0)/16)|0)+1);
+    const u={id:'E'+i, name:ek.name, hp:ek.hp, hpMax:ek.hpMax, atk:ek.atk, def:ek.def, range:ek.range, spd:ek.spd,
+      team:1, x:Battle.gridW-2, y: ((Battle.gridH/(ecount+1))*(i+1))|0, ai:ek.ai, tier:ek.tier};
+    // avoid walls spawn
+    if(Battle.tiles[u.y*Battle.gridW+u.x]===1) Battle.tiles[u.y*Battle.gridW+u.x]=0;
+    Battle.units.push(u);
+  }
+  Battle.turnIndex=0; Battle.state='select'; Battle.selected=null; Battle.info='Your turn';
+  updateUnitCard();
+  log("A battle begins!");
+}
+function endBattle(victory){
+  document.getElementById('battleHUD').style.display='none';
+  Battle.active=false; Game.state='overworld';
+  if(victory){ 
+    const tier = 1 + ((Math.random()*2)|0) + (Game.inDungeon?Game.dungeon.depth:0);
+    if(Math.random()<0.7) addItem(randWeapon(tier));
+    if(Math.random()<0.5) addItem(randArmor(tier));
+    gainXP(12+((Math.random()*8)|0), 'Melee');
+    log("Victory! You loot the fallen.");
+  } else { log("You escaped."); }
+}
+function unitAt(x,y){return Battle.units.find(u=>u.x===x&&u.y===y && u.hp>0)}
+function passable(x,y){ if(x<0||y<0||x>=Battle.gridW||y>=Battle.gridH) return false; return Battle.tiles[y*Battle.gridW+x]===0 && !unitAt(x,y); }
+function manhattan(a,b){return Math.abs(a.x-b.x)+Math.abs(a.y-b.y)}
+function computeMoveRange(u){
+  const range = new Set(); const Q=[[u.x,u.y, u.spd]];
+  const seen=new Set([u.x+','+u.y]);
+  while(Q.length){
+    const [x,y,m]=Q.shift();
+    range.add(x+','+y);
+    if(m<=0) continue;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=x+dx, ny=y+dy;
+      const key=nx+','+ny;
+      if(!seen.has(key) && passable(nx,ny)){ seen.add(key); Q.push([nx,ny,m-1]);}
+    }
+  }
+  return range;
+}
+function computeAttackable(u){
+  const set=new Set();
+  for(let y=0;y<Battle.gridH;y++)for(let x=0;x<Battle.gridW;x++){
+    if(manhattan(u,{x,y})<= (u.range||1)) set.add(x+','+y);
+  }
+  return set;
+}
+function nextTurn(){
+  // order: alive by spd, alternate teams but simple sort works
+  const alive=Battle.units.filter(u=>u.hp>0);
+  alive.sort((a,b)=>b.spd-a.spd);
+  Battle.units = alive;
+  Battle.turnIndex = (Battle.turnIndex+1)%Battle.units.length;
+  const u=Battle.units[Battle.turnIndex];
+  Battle.selected=null; Battle.state = (u.team===0?'select':'enemy');
+  Battle.info = (u.team===0?'Your turn':'Enemy turn');
+  updateUnitCard();
+  if(u.team===1) enemyAct(u);
+}
+function attack(att,def){
+  const base = att.atk + (Equip.weapon?.atk||0) + (att.kind==='magic' ? (Skills.Magic.lvl|0) : 0);
+  const dmg = Math.max(1, base - def.def);
+  def.hp = Math.max(0, def.hp - dmg);
+  if(att.team===0) gainXP(6,'Melee');
+  if(def.hp<=0){
+    log(`${att.name} defeated ${def.name}!`);
+    // end battle if all enemies dead
+    if(Battle.units.filter(u=>u.team===1 && u.hp>0).length===0){ endBattle(true); return; }
+  }
+}
+function enemyAct(u){
+  // simple AI: move towards nearest player then attack if in range
+  const player = Battle.units.find(x=>x.team===0);
+  if(!player){ endBattle(false); return; }
+  const dist=manhattan(u,player);
+  if(dist>u.range){
+    // move 1 step closer in x/y preferring axis with bigger gap
+    const dx=Math.sign(player.x - u.x), dy=Math.sign(player.y - u.y);
+    const trySteps=[[dx,0],[0,dy],[dx,dy],[-dx,0],[0,-dy]];
+    for(const [sx,sy] of trySteps){
+      const nx=u.x+sx, ny=u.y+sy;
+      if(passable(nx,ny)){ u.x=nx; u.y=ny; break; }
+    }
+  }
+  if(manhattan(u,player)<=u.range){ attack(u,player); }
+  if(player.hp<=0){ gameOver(); return; }
+  setTimeout(nextTurn, 200);
+}
+function updateUnitCard(){
+  const u=Battle.units[Battle.turnIndex];
+  const el=document.getElementById('unitCard');
+  if(!u){el.textContent='—'; return;}
+  el.innerHTML = `<div><b>${u.name}</b> (${u.team===0?'You':'Enemy'})</div>
+    <div class="bar" style="width:120px"><div class="fill hp" style="width:${Math.floor(100*u.hp/u.hpMax)}%"></div></div>
+    <div class="small">ATK ${u.atk} DEF ${u.def} RNG ${u.range} SPD ${u.spd}</div>`;
+  document.getElementById('turnCard').textContent = `Turn: ${u.name} • ${Battle.info}`;
+}
+
+/*** SURVIVAL + SKILLS ********************************************************/
+function tickTime(minutes=1){
+  Game.time.minutes += minutes;
+  while(Game.time.minutes>=24*60){ Game.time.minutes-=24*60; Game.time.day++; log(`Day ${Game.time.day} begins.`);}
+  if(Game.state==='overworld'){
+    if((Game.time.minutes%10)===0){ // every 10 minutes
+      Game.hunger = Math.min(100, Game.hunger+1);
+      Game.thirst = Math.min(100, Game.thirst+2);
+      if(Game.thirst>80 || Game.hunger>90) { Game.player.stamina = Math.max(0, Game.player.stamina-1); }
+      if(Game.thirst>=100){ Game.player.hp = Math.max(1, Game.player.hp-1); }
+    }
+    if(Math.random()<0.05){ // chance to spawn roaming enemy nearby
+      spawnRoamer();
+    }
+  }
+  updateBars();
+}
+function fmtClock(){
+  const m=Game.time.minutes% (24*60);
+  const hh = Math.floor(m/60), mm= m%60;
+  return `Day ${Game.time.day} • ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
+}
+function gainXP(n, skill){
+  Game.xp += n; // global
+  if(skill && Skills[skill]){ Skills[skill].xp += n; while(Skills[skill].xp>=needXP(Skills[skill].lvl)){ Skills[skill].xp-=needXP(Skills[skill].lvl); Skills[skill].lvl++; log(`${skill} reached level ${Skills[skill].lvl}!`); }}
+  while(Game.xp >= needXP(Game.level)){ Game.xp -= needXP(Game.level); Game.level++; Game.player.hpMax+=2; Game.player.staminaMax+=1; log(`You reached level ${Game.level}!`); }
+  updateBars();
+}
+function needXP(lv){ return 20 + lv*lv*5; }
+
+/*** ENTITIES *****************************************************************/
+function spawnRoamer(){
+  // visible roaming enemy on overworld near player
+  const r=Game.rng;
+  const px=Game.player.x, py=Game.player.y;
+  let tries=0;
+  while(tries++<30){
+    const x = clamp(px + ((r()*14)|0)-7, 2, Game.world.w-3);
+    const y = clamp(py + ((r()*14)|0)-7, 2, Game.world.h-3);
+    const t=Game.world.tiles[y*Game.world.w+x];
+    if(t!==TILE.WATER && t!==TILE.MOUNTAIN){
+      Game.entities.push({type:'roamer', x,y, tick:0, speed:0.25 + r()*0.3});
+      break;
+    }
+  }
+}
+
+/*** DRAWING ******************************************************************/
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+const minimap=document.getElementById('minimap'), mm= minimap.getContext('2d');
+function resize(){
+  canvas.width = canvas.clientWidth = window.innerWidth-300;
+  canvas.height = canvas.clientHeight = document.getElementById('main').clientHeight;
+  minimap.width=140; minimap.height=140;
+}
+window.addEventListener('resize', resize);
+
+function draw(){
+  ctx.imageSmoothingEnabled=false;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(Game.state==='overworld'){
+    drawWorld();
+    drawHUDWorld();
+  } else if(Game.state==='battle'){
+    drawBattle();
+  }
+  requestAnimationFrame(draw);
+}
+function drawWorld(){
+  const {w,h,tiles,res}=Game.world;
+  const ts=TILE_SIZE;
+  // camera center to player
+  Game.camera.x = lerp(Game.camera.x, Game.player.x*ts - canvas.width/2 + ts/2, CAMERA_SPEED);
+  Game.camera.y = lerp(Game.camera.y, Game.player.y*ts - canvas.height/2 + ts/2, CAMERA_SPEED);
+  // visible tiles
+  const sx=Math.max(0, Math.floor(Game.camera.x/ts));
+  const sy=Math.max(0, Math.floor(Game.camera.y/ts));
+  const ex=Math.min(w, sx + Math.ceil(canvas.width/ts)+2);
+  const ey=Math.min(h, sy + Math.ceil(canvas.height/ts)+2);
+  for(let y=sy;y<ey;y++){
+    for(let x=sx;x<ex;x++){
+      const t=tiles[y*w+x];
+      ctx.fillStyle=TCOL[t]; ctx.fillRect(x*ts-Game.camera.x,y*ts-Game.camera.y,ts,ts);
+      // resource hint
+      if(res[y*w+x]===RES.TREE){ ctx.fillStyle='#0a0'; ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12); }
+      if(res[y*w+x]===RES.STONE){ ctx.fillStyle='#aaa'; ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12); }
+      if(res[y*w+x]===RES.HERB){ ctx.fillStyle='#58d'; ctx.fillRect(x*ts-Game.camera.x+8,y*ts-Game.camera.y+8,ts-16,ts-16); }
+      if(res[y*w+x]===RES.ORE){ ctx.fillStyle='#d9b36b'; ctx.fillRect(x*ts-Game.camera.x+6,y*ts-Game.camera.y+6,ts-12,ts-12); }
+      if(res[y*w+x]===RES.BERRY){ ctx.fillStyle='#c24'; ctx.fillRect(x*ts-Game.camera.x+8,y*ts-Game.camera.y+8,ts-16,ts-16); }
+      if(t===TILE.DUNGEON){ ctx.strokeStyle='#eee'; ctx.beginPath(); ctx.arc(x*ts-Game.camera.x+ts/2,y*ts-Game.camera.y+ts/2,ts/3,0,Math.PI*2); ctx.stroke(); }
+    }
+  }
+  // entities
+  ctx.fillStyle='#ffef6b';
+  for(const e of Game.entities){
+    ctx.beginPath(); ctx.arc(e.x*ts-Game.camera.x+ts/2,e.y*ts-Game.camera.y+ts/2,6,0,Math.PI*2); ctx.fill();
+  }
+  // player
+  ctx.fillStyle='#9bdcff';
+  ctx.fillRect(Game.player.x*ts-Game.camera.x+4, Game.player.y*ts-Game.camera.y+4, ts-8, ts-8);
+  // minimap
+  for(let y=0;y<Game.world.h;y++){
+    for(let x=0;x<Game.world.w;x++){
+      const t=tiles[y*w+x];
+      mm.fillStyle = (t===TILE.WATER?'#072336':t===TILE.SAND?'#cdbd7e':t===TILE.FOREST?'#164b28':t===TILE.MOUNTAIN?'#7a7f90':t===TILE.DUNGEON?'#a277d1':'#2b6335');
+      const px = (x/Game.world.w)*minimap.width, py=(y/Game.world.h)*minimap.height;
+      mm.fillRect(px,py,1.2,1.2);
+    }
+  }
+  mm.fillStyle='#fff'; mm.fillRect((Game.player.x/Game.world.w)*minimap.width-1,(Game.player.y/Game.world.h)*minimap.height-1,2,2);
+}
+function drawHUDWorld(){
+  // nothing special here (top bar already drawn)
+}
+function drawBattle(){
+  // clear
+  ctx.fillStyle='#0b0e14'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const ts=42;
+  const ox = (canvas.width - Battle.gridW*ts)/2;
+  const oy = (canvas.height - Battle.gridH*ts)/2;
+  // grid
+  for(let y=0;y<Battle.gridH;y++){
+    for(let x=0;x<Battle.gridW;x++){
+      const t=Battle.tiles[y*Battle.gridW+x];
+      ctx.fillStyle = t===0 ? '#132032' : '#1b1f2b';
+      ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1);
+    }
+  }
+  // overlays
+  const u = Battle.units[Battle.turnIndex];
+  if(Battle.state==='move' && Battle.moveRange){
+    ctx.fillStyle='rgba(102,179,255,0.25)';
+    for(const key of Battle.moveRange){ const [x,y]=key.split(',').map(Number); ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1); }
+  }
+  if(Battle.state==='attack' && Battle.attackRange){
+    ctx.fillStyle='rgba(255,107,107,0.25)';
+    for(const key of Battle.attackRange){ const [x,y]=key.split(',').map(Number); ctx.fillRect(ox+x*ts,oy+y*ts,ts-1,ts-1); }
+  }
+  // units
+  for(const unit of Battle.units){
+    if(unit.hp<=0) continue;
+    ctx.fillStyle = unit.team===0 ? '#9bdcff' : '#ff6b8b';
+    ctx.fillRect(ox+unit.x*ts+6, oy+unit.y*ts+6, ts-12, ts-12);
+    // HP bar
+    ctx.fillStyle='#300'; ctx.fillRect(ox+unit.x*ts+4,oy+unit.y*ts+3,ts-8,6);
+    ctx.fillStyle='#e55'; ctx.fillRect(ox+unit.x*ts+4,oy+unit.y*ts+3, (ts-8)*(unit.hp/unit.hpMax),6);
+  }
+  // selection
+  if(Battle.selected){
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.strokeRect(ox+Battle.selected.x*ts+2, oy+Battle.selected.y*ts+2, ts-4, ts-4);
+  }
+  // click handling hitbox store
+  Battle._origin={ox,oy,ts};
+}
+
+/*** INPUT ********************************************************************/
+window.addEventListener('keydown', e=>{
+  KEY[e.key]=true;
+  if(e.key==='i' || e.key==='I'){ openTab('inventory'); }
+  if(e.key==='c' || e.key==='C'){ openTab('crafting'); }
+  if(e.key==='k' || e.key==='K'){ openTab('skills'); }
+  if(e.key==='m' || e.key==='M'){ Game.showMap=!Game.showMap; toast(Game.showMap?'World map on':'World map off'); }
+  if(Game.state==='overworld'){
+    if(e.key==='Enter'){ tryEnterDungeon(); }
+    if(e.key==='f' || e.key==='F'){ tryGather(); }
+  }
+});
+window.addEventListener('keyup', e=>{ KEY[e.key]=false; });
+
+canvas.addEventListener('click', e=>{
+  if(Game.state==='battle'){
+    const {ox,oy,ts}=Battle._origin||{ox:0,oy:0,ts:42};
+    const x = Math.floor((e.offsetX-ox)/ts), y=Math.floor((e.offsetY-oy)/ts);
+    onBattleClick(x,y);
+  } else {
+    // maybe click on an entity to approach?
+  }
+});
+
+function onBattleClick(x,y){
+  const u=Battle.units[Battle.turnIndex];
+  if(u.team!==0) return;
+  if(Battle.state==='move'){
+    const k=x+','+y;
+    if(Battle.moveRange.has(k)){ u.x=x; u.y=y; Battle.state='select'; Battle.selected=u; updateUnitCard(); }
+  } else if(Battle.state==='attack'){
+    const k=x+','+y;
+    if(Battle.attackRange.has(k)){
+      const t=unitAt(x,y);
+      if(t && t.team!==u.team){ attack(u,t); updateUnitCard(); Battle.state='select'; }
+    }
+  } else {
+    // select a tile/unit
+    const t=unitAt(x,y);
+    if(t && t.team===0 && t===u){ Battle.selected=t; }
+  }
+}
+
+/*** OVERWORLD ACTIONS *********************************************************/
+function movePlayer(dx,dy){
+  if(Game.state!=='overworld') return;
+  const nx=clamp(Game.player.x+dx,0,Game.world.w-1);
+  const ny=clamp(Game.player.y+dy,0,Game.world.h-1);
+  const t=Game.world.tiles[ny*Game.world.w+nx];
+  if(t!==TILE.WATER && !(t===TILE.MOUNTAIN && Skills.Survival.lvl<2)){
+    Game.player.x=nx; Game.player.y=ny;
+    Game.player.stamina = Math.max(0, Game.player.stamina - 0.1);
+    // check collision with roamer
+    const hit = Game.entities.find(e=> e.type==='roamer' && e.x===nx && e.y===ny);
+    if(hit){ startBattle({type:'overworld'}); Game.entities.splice(Game.entities.indexOf(hit),1); }
+  }
+  tickTime(1);
+}
+function tryGather(){
+  const w=Game.world.w, tiles=Game.world.tiles, res=Game.world.res;
+  const idx=Game.player.y*w+Game.player.x;
+  const r=res[idx];
+  if(r===RES.TREE){
+    const bonus = (Skills.Woodcutting.lvl>=3?1:0) + (Equip.weapon?.name.includes('Axe')?1:0);
+    const amt = 1+bonus;
+    addItem(newItem({name:'Wood',type:'mat',qty:amt}));
+    gainXP(3,'Woodcutting');
+    res[idx]=Math.random()<0.5?RES.NONE:RES.TREE; // sometimes persists
+    log(`Chopped wood (${amt}).`);
+  } else if(r===RES.STONE){
+    const bonus=(Skills.Mining.lvl>=3?1:0);
+    addItem(newItem({name:'Stone',type:'mat',qty:1+bonus}));
+    gainXP(3,'Mining');
+    res[idx]=Math.random()<0.5?RES.NONE:RES.STONE;
+    log(`Quarried stone.`);
+  } else if(r===RES.ORE){
+    addItem(newItem({name:'Ore',type:'mat',qty:1}));
+    gainXP(4,'Mining');
+    res[idx]=Math.random()<0.4?RES.NONE:RES.ORE;
+    log(`Mined ore.`);
+  } else if(r===RES.HERB){
+    addItem(newItem({name:'Herb',type:'mat',qty:1}));
+    gainXP(2,'Foraging');
+    res[idx]=RES.NONE;
+    log(`Picked an herb.`);
+  } else if(r===RES.BERRY){
+    addItem(newItem({name:'Berries',type:'food',qty:1, consumes:{hunger:-8,thirst:-4}}));
+    gainXP(2,'Foraging');
+    res[idx]=RES.NONE;
+    log(`Collected berries.`);
+  } else {
+    // craft/place?
+    log("Nothing to gather here.");
+  }
+  updatePanel();
+}
+function tryEnterDungeon(){
+  const w=Game.world.w, tiles=Game.world.tiles;
+  const idx=Game.player.y*w+Game.player.x;
+  if(tiles[idx]===TILE.DUNGEON){
+    Game.inDungeon=true;
+    Game.dungeon = genDungeon(Game.seed, (Math.hypot(Game.player.x-Game.world.spawn.x,Game.player.y-Game.world.spawn.y)/18|0)+1);
+    log(`You descend into Dungeon (Depth ${Game.dungeon.depth}).`);
+    // spawn immediate battle chance
+    if(Math.random()<0.6) startBattle({type:'dungeon', enemies:Game.dungeon.enemies});
+  } else if(Game.inDungeon){
+    // leave dungeon
+    Game.inDungeon=false;
+    Game.dungeon=null;
+    log("You return to the surface.");
+  } else {
+    log("No dungeon here.");
+  }
+}
+
+/*** UI PANELS ****************************************************************/
+function openTab(tab){
+  Game.uiTab=tab;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  updatePanel();
+}
+function updatePanel(){
+  const p=document.getElementById('panel');
+  if(Game.uiTab==='journal'){
+    p.innerHTML = `
+      <div class="section">
+        <div class="row"><b>Background</b><span>${Game.player.background}</span></div>
+        <div class="row"><span>Level</span><span>${Game.level} (${Game.xp}/${needXP(Game.level)} xp)</span></div>
+        <div class="row"><span>Location</span><span>${Game.inDungeon?`Dungeon ${Game.dungeon.depth}`:'Overworld'} (${Game.player.x},${Game.player.y})</span></div>
+        <div class="row"><span>Equipment</span><span>${Equip.weapon?Equip.weapon.name:'None'} / ${Equip.armor?Equip.armor.name:'Clothes'}</span></div>
+      </div>
+      <div class="section">
+        <b>Tips</b>
+        <div class="small">Find <b>purple obelisks</b> to enter dungeons. Press <span class="kbd">Enter</span>.</div>
+        <div class="small">Press <span class="kbd">F</span> to gather at trees, rocks, herbs, and berries.</div>
+        <div class="small">Craft a <b>Campfire</b> to rest and cook.</div>
+      </div>`;
+  } else if(Game.uiTab==='inventory'){
+    let html='<div class="section"><b>Inventory</b>';
+    for(const it of Inventory){
+      html += `<div class="item"><div><span class="name">${it.name}</span> <span class="small">x${it.qty}</span></div>
+      <div>
+        ${it.type==='weapon'?`<button class="btn" onclick="equipItem(${it.id})">Equip</button>`:''}
+        ${it.type==='armor'?`<button class="btn" onclick="equipItem(${it.id})">Equip</button>`:''}
+        ${it.consumes?`<button class="btn" onclick="useItem(${it.id})">Use</button>`:''}
+        <button class="btn" onclick="dropItem(${it.id})">Drop</button>
+      </div></div>`;
+    }
+    html+='</div>';
+    p.innerHTML=html;
+  } else if(Game.uiTab==='skills'){
+    let html='<div class="section"><b>Skills (Learn by Doing)</b>';
+    for(const [k,v] of Object.entries(Skills)){
+      html+=`<div class="row"><span>${k}</span><span>Lv ${v.lvl} (${v.xp}/${needXP(v.lvl)})</span></div>`;
+    }
+    html+='</div>';
+    p.innerHTML=html;
+  } else if(Game.uiTab==='crafting'){
+    p.innerHTML = renderCrafting();
+  }
+}
+function renderCrafting(){
+  const R = knownRecipes();
+  let html='<div class="section"><b>Crafting</b>';
+  for(const r of R){
+    const can= r.require.every(req=> countItem(req[0])>=req[1]);
+    html+=`<div class="item"><div><span class="name">${r.name}</span> <span class="small">${r.desc}</span></div>
+    <div><button class="btn" ${can?'':'disabled'} onclick="craft('${r.key}')">Craft</button></div></div>`;
+  }
+  html+='</div>';
+  return html;
+}
+function knownRecipes(){
+  // unlocks by simple conditions (skills)
+  const list=[];
+  const push=(key,name,desc,require,make)=>list.push({key,name,desc,require,make});
+  push('stick','Stick','x1 Wood ➜ x2 Sticks', [['Wood',1]], ()=> addItem(newItem({name:'Stick',type:'mat',qty:2})));
+  push('campfire','Campfire','x3 Wood + x2 Stone ➜ place to Rest', [['Wood',3],['Stone',2]], ()=> addItem(newItem({name:'Campfire',type:'placeable',qty:1})));
+  push('potion','Healing Draught','x2 Herb + x1 Berries ➜ heals 12', [['Herb',2],['Berries',1]], ()=> addItem(newItem({name:'Healing Draught',type:'consumable',qty:1,consumes:{hp:+12}})));
+  if(Skills.Crafting.lvl>=2) push('woodSword','Wooden Sword','x2 Wood + x1 Stick', [['Wood',2],['Stick',1]], ()=> addItem(newItem({name:'Wooden Sword',type:'weapon',kind:'melee',atk:3,range:1,qty:1})));
+  if(Skills.Crafting.lvl>=3) push('bow','Short Bow','x2 Wood + x1 Stick', [['Wood',2],['Stick',1]], ()=> addItem(newItem({name:'Short Bow',type:'weapon',kind:'ranged',atk:2,range:3,qty:1})));
+  if(Skills.Crafting.lvl>=3) push('leather','Leather Armor','x3 Berries (dye) + x2 Herb (tannin)', [['Berries',3],['Herb',2]], ()=> addItem(newItem({name:'Leather Armor',type:'armor',def:3,qty:1})));
+  return list;
+}
+function craft(key){
+  const r= knownRecipes().find(x=>x.key===key); if(!r) return;
+  for(const req of r.require){ removeItemByName(req[0], req[1]); }
+  r.make();
+  gainXP(5,'Crafting');
+  updatePanel();
+}
+function equipItem(id){
+  const it=Inventory.find(i=>i.id===id); if(!it) return;
+  if(it.type==='weapon'){ Equip.weapon=it; log(`Equipped ${it.name}.`);}
+  if(it.type==='armor'){ Equip.armor=it; log(`Equipped ${it.name}.`);}
+  updatePanel(); updateBars();
+}
+function useItem(id){
+  const it=Inventory.find(i=>i.id===id); if(!it) return;
+  if(it.consumes){
+    if(it.consumes.hp) Game.player.hp = clamp(Game.player.hp + it.consumes.hp, 1, Game.player.hpMax);
+    if(it.consumes.hunger) Game.hunger = clamp(Game.hunger + it.consumes.hunger, 0, 100);
+    if(it.consumes.thirst) Game.thirst = clamp(Game.thirst + it.consumes.thirst, 0, 100);
+    it.qty--; if(it.qty<=0) Inventory.splice(Inventory.indexOf(it),1);
+    log(`Used ${it.name}.`);
+    updateBars(); updatePanel();
+    return;
+  }
+  if(it.name==='Campfire'){
+    log("You place a campfire and rest. HP/Stamina restored, hunger/thirst reduced.");
+    Game.player.hp = Math.min(Game.player.hpMax, Game.player.hp+10);
+    Game.player.stamina = Game.player.staminaMax;
+    Game.hunger=clamp(Game.hunger-20,0,100); Game.thirst=clamp(Game.thirst-20,0,100);
+    it.qty--; if(it.qty<=0) Inventory.splice(Inventory.indexOf(it),1);
+    gainXP(3,'Survival');
+    updateBars(); updatePanel();
+  }
+}
+function dropItem(id){
+  const it=Inventory.find(i=>i.id===id); if(!it) return;
+  it.qty--; if(it.qty<=0) Inventory.splice(Inventory.indexOf(it),1);
+  log(`Dropped ${it.name}.`);
+  updatePanel();
+}
+
+/*** SAVE / LOAD **************************************************************/
+function saveGame(){
+  const data = {
+    seed:Game.seed, player:Game.player, entities:Game.entities,
+    world:{tiles:Array.from(Game.world.tiles), res:Array.from(Game.world.res), w:Game.world.w, h:Game.world.h, spawn:Game.world.spawn},
+    inv:Inventory, equip:Equip, skills:Skills, time:Game.time, hunger:Game.hunger, thirst:Game.thirst,
+    xp:Game.xp, level:Game.level, inDungeon:Game.inDungeon, dungeon:Game.dungeon?{...Game.dungeon, grid:Array.from(Game.dungeon.grid)}:null
+  }
+  localStorage.setItem('wilds_save', JSON.stringify(data));
+  Game.lastSave = new Date().toLocaleString();
+  toast("Game saved.");
+}
+function loadGame(){
+  const s=localStorage.getItem('wilds_save'); if(!s){ toast("No save found."); return; }
+  try{
+    const d=JSON.parse(s);
+    Object.assign(Game, {seed:d.seed, player:d.player, entities:d.entities, time:d.time, hunger:d.hunger, thirst:d.thirst, xp:d.xp, level:d.level, inDungeon:d.inDungeon});
+    Game.world = {w:d.world.w, h:d.world.h, tiles:Uint8Array.from(d.world.tiles), res:Uint8Array.from(d.world.res), spawn:d.world.spawn};
+    Inventory.length=0; for(const it of d.inv) Inventory.push(it);
+    Equip.weapon = d.equip.weapon; Equip.armor=d.equip.armor;
+    for(const k of Object.keys(Skills)) Object.assign(Skills[k], d.skills[k]);
+    if(d.dungeon){ Game.dungeon = {...d.dungeon, grid:Uint8Array.from(d.dungeon.grid)}; } else Game.dungeon=null;
+    toast("Loaded save.");
+  }catch(e){ console.error(e); toast("Failed to load save."); }
+  updatePanel(); updateBars();
+}
+
+/*** STATUS / LOG *************************************************************/
+function updateBars(){
+  document.getElementById('hpbar').style.width = `${Math.floor(100*Game.player.hp/Game.player.hpMax)}%`;
+  document.getElementById('stabar').style.width = `${Math.floor(100*Game.player.stamina/Game.player.staminaMax)}%`;
+  document.getElementById('xpbar').style.width = `${Math.floor(100*Game.xp/needXP(Game.level))}%`;
+  document.getElementById('clock').textContent = fmtClock();
+  document.getElementById('vitals').textContent = `Hunger: ${Game.hunger} • Thirst: ${Game.thirst}`;
+}
+function log(s){
+  Game.msgLog.push(s);
+  const el=document.getElementById('log');
+  el.innerHTML += `<div>• ${s}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+function toast(s){ const t=document.getElementById('toast'); t.textContent=s; t.style.display='block'; clearTimeout(Game.hot.toast); Game.hot.toast=setTimeout(()=>t.style.display='none',1600); }
+
+/*** HELP DIALOG **************************************************************/
+function openHelp(){ document.getElementById('overlay').style.display='flex'; }
+function closeHelp(){ document.getElementById('overlay').style.display='none'; }
+
+/*** GAME LOOP ****************************************************************/
+function step(){
+  if(Game.state==='overworld'){
+    let dx=0,dy=0;
+    if(KEY['ArrowLeft']||KEY['a']||KEY['A']) dx=-1;
+    else if(KEY['ArrowRight']||KEY['d']||KEY['D']) dx=+1;
+    if(KEY['ArrowUp']||KEY['w']||KEY['W']) dy=-1;
+    else if(KEY['ArrowDown']||KEY['s']||KEY['S']) dy=+1;
+    if(dx||dy){ movePlayer(dx,dy); }
+    // roamers drift toward player a bit
+    for(const e of Game.entities){ if(e.type==='roamer'){ if(Math.random()<0.8){ e.x += Math.sign(Game.player.x - e.x)*(Math.random()<e.speed?1:0); e.y += Math.sign(Game.player.y - e.y)*(Math.random()<e.speed?1:0); } } }
+  }
+}
+setInterval(()=>{ step(); }, 90);
+setInterval(()=>{ tickTime(1); }, 700);
+
+/*** BATTLE HUD actions *******************************************************/
+document.getElementById('actMove').onclick=()=>{
+  const u=Battle.units[Battle.turnIndex]; if(u.team!==0) return;
+  Battle.moveRange=computeMoveRange(u); Battle.state='move'; Battle.selected=u; updateUnitCard();
+}
+document.getElementById('actAttack').onclick=()=>{
+  const u=Battle.units[Battle.turnIndex]; if(u.team!==0) return;
+  Battle.attackRange=computeAttackable(u); Battle.state='attack'; Battle.selected=u; updateUnitCard();
+}
+document.getElementById('actWait').onclick=()=>{ nextTurn(); }
+document.getElementById('actItem').onclick=()=>{
+  // quick use potion if any
+  const pot=Inventory.find(i=>i.consumes?.hp); if(pot){ useItem(pot.id); updateUnitCard(); } else { toast('No usable item.'); }
+}
+document.getElementById('actAbility').onclick=()=>{
+  const u=Battle.units[Battle.turnIndex]; if(u.team!==0) return;
+  // simple ability unlock by Magic level: Spark (range 3) costs stamina
+  if(Skills.Magic.lvl>=2){
+    Battle.state='attack';
+    Battle.attackRange=new Set();
+    for(let y=0;y<Battle.gridH;y++)for(let x=0;x<Battle.gridW;x++){ if(manhattan(u,{x,y})<=3) Battle.attackRange.add(x+','+y); }
+    toast('Select target tile for SPARK.');
+    // override temporary click handler via flag
+    Battle._ability='spark';
+  } else toast('No abilities yet. Raise Magic to Lv2.');
+}
+document.getElementById('actFlee').onclick=()=>{ endBattle(false); }
+
+/*** MAP BUTTONS **************************************************************/
+document.getElementById('btnHelp').onclick=openHelp;
+document.getElementById('dlgClose').onclick=closeHelp;
+document.getElementById('btnInv').onclick=()=>openTab('inventory');
+document.getElementById('btnCraft').onclick=()=>openTab('crafting');
+document.getElementById('btnSkills').onclick=()=>openTab('skills');
+document.getElementById('btnSave').onclick=saveGame;
+document.getElementById('btnLoad').onclick=loadGame;
+document.getElementById('btnNew').onclick=()=>{
+  if(confirm('Start a new game? Unsaved progress will be lost.')) init(true);
+};
+document.getElementById('btnMap').onclick=()=>{ Game.showMap=!Game.showMap; toast(Game.showMap?'World map on':'World map off'); };
+
+/*** BATTLE ABILITY post-click hook *******************************************/
+(function(){
+  const oldBattleClick = onBattleClick;
+  window.onBattleClick = function(x,y){
+    const u=Battle.units[Battle.turnIndex];
+    if(Battle._ability==='spark'){
+      const k=x+','+y;
+      if(Battle.attackRange?.has(k)){
+        const t=unitAt(x,y);
+        if(t && t.team!==u.team){
+          const dmg = 4 + (Skills.Magic.lvl|0);
+          t.hp=Math.max(0,t.hp - dmg);
+          log(`Spark zaps ${t.name} for ${dmg}!`);
+          gainXP(7,'Magic');
+          Battle._ability=null; Battle.state='select';
+          if(t.hp<=0 && Battle.units.filter(u=>u.team===1 && u.hp>0).length===0){ endBattle(true); return; }
+          updateUnitCard();
+        }
+      }
+      return;
+    }
+    oldBattleClick(x,y);
+  }
+})();
+
+/*** GAME OVER ****************************************************************/
+function gameOver(){
+  alert('You collapse… (Game Over). Starting a new day at spawn.');
+  // soft reset
+  Game.player.hp = Game.player.hpMax;
+  Game.player.stamina = Game.player.staminaMax;
+  Game.player.x=Game.world.spawn.x; Game.player.y=Game.world.spawn.y;
+  Game.entities.length=0;
+  Game.state='overworld'; document.getElementById('battleHUD').style.display='none';
+}
+
+/*** INIT *********************************************************************/
+function init(newSeed=false){
+  if(newSeed){ Game.seed = prompt('World seed (leave blank for random):', Math.random().toString(36).slice(2)) || Math.random().toString(36).slice(2); }
+  Game.rng = seededRNG(Game.seed);
+  Game.world = genWorld(Game.seed);
+  Game.player = newPlayer(Game.world.spawn.x, Game.world.spawn.y);
+  Game.entities=[]; Game.inDungeon=false; Game.dungeon=null;
+  Game.time={minutes:6*60, day:1}; Game.hunger=0; Game.thirst=0; Game.xp=0; Game.level=1;
+  for(const k of Object.keys(Skills)){ Skills[k].xp=0; Skills[k].lvl=1; }
+  Inventory.length=0; Equip.weapon=null; Equip.armor=null;
+  // starter kit
+  addItem(newItem({name:'Stick',type:'mat',qty:2}));
+  addItem(newItem({name:'Berries',type:'food',qty:1,consumes:{hunger:-8,thirst:-4}}));
+  addItem(newItem({name:'Traveler\'s Cloak',type:'armor',def:1,qty:1}));
+  Equip.armor = Inventory.find(i=>i.name==='Traveler\'s Cloak');
+  log('Welcome to the Wilds of Aether.');
+  log(`Seed: ${Game.seed}`);
+  resize(); updateBars(); openTab('journal'); openHelp();
+}
+
+resize(); updatePanel(); draw(); init(false);
+</script>
+</body>
+</html>

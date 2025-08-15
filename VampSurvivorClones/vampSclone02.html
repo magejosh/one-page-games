@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vampire Survivors – Bullet‑Hell Clone with Leveling</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#111;height:100%;font-family:sans-serif;color:#fff;}
+  #gameCanvas{display:block;background:#111;}
+  #overlay, #levelupOverlay{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.85);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:10;text-align:center;
+  }
+  #overlay button, #levelupOverlay button{
+    margin-top:20px;
+    padding:10px 25px;
+    font-size:18px;
+    cursor:pointer;
+    border:none;
+    background:#1e90ff;
+    color:#fff;
+    border-radius:5px;
+  }
+  #levelupCards{
+    display:flex;gap:24px;justify-content:center;margin:24px 0;
+    flex-wrap:wrap;
+  }
+  .card{
+    background:#222;
+    border-radius:16px;
+    box-shadow:0 2px 12px #000b;
+    border:2px solid #333;
+    width:220px;max-width:95vw;padding:20px 12px 12px 12px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;transition:.13s;
+  }
+  .card:hover{border-color:#1e90ff;box-shadow:0 0 32px #1e90ff66;}
+  .card .emoji{font-size:3em;margin-bottom:8px;}
+  .card .name{font-size:1.2em;font-weight:bold;margin-bottom:4px;}
+  .card .desc{font-size:.98em;opacity:.85;}
+  #hotkeys{
+    position:absolute;right:15px;top:15px;background:#222d;padding:10px 16px;border-radius:10px;box-shadow:0 2px 12px #0008;z-index:9;
+    max-width:300px;min-width:170px;
+  }
+  #hotkeys h3{margin:0 0 4px 0;font-size:1.1em;}
+  #hotkeys .hk{display:flex;align-items:center;gap:8px;}
+  #hotkeys .num{font-family:monospace;display:inline-block;width:1.6em;}
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<div id="overlay">
+  <div id="message">Press Start to Play</div>
+  <button id="startBtn">Start</button>
+</div>
+<div id="levelupOverlay" style="display:none;">
+  <div id="levelupMsg">Level Up! Choose an ability</div>
+  <div id="levelupCards"></div>
+</div>
+<div id="hotkeys" style="display:none;">
+  <h3>Abilities</h3>
+  <div id="hotkeyList"></div>
+  <div style="font-size:.85em;margin-top:3px;color:#ccc;">Press 1–0 to activate</div>
+</div>
+
+<script>
+(() => {
+// ---------------------------------------------------------------------------
+//  ABILITY DEFS
+// ---------------------------------------------------------------------------
+const ALL_ABILITIES = [
+  {
+    id: 'explodingMonster', name: 'Exploding Monster', emoji:'💥',
+    desc: 'Monsters killed explode, firing bullets in all directions.',
+    type: 'passive'
+  },
+  {
+    id: 'turnUndead', name: 'Turn Undead', emoji:'🧟',
+    desc: 'Active: When triggered, your next bullet-killed monster turns and attacks the nearest enemy in a suicide run (both die).',
+    type: 'active', cooldown: 12
+  },
+  {
+    id: 'ricochet', name: 'Ricochet', emoji:'🏓',
+    desc: 'Bullets bounce to another monster after hitting the first target.',
+    type: 'passive'
+  },
+  {
+    id: 'piercingShot', name: 'Piercing Shot', emoji:'🎯',
+    desc: 'Bullets pass through one extra enemy.',
+    type: 'passive'
+  },
+  {
+    id: 'doubleTap', name: 'Double Tap', emoji:'🔫',
+    desc: 'Shoot a second burst immediately after each normal burst.',
+    type: 'passive'
+  },
+  {
+    id: 'freeze', name: 'Freeze', emoji:'❄️',
+    desc: 'Active: Freezes all enemies in place for 2s. Cooldown: 15s.',
+    type: 'active', cooldown: 15
+  },
+  // add more fun ones...
+  {
+    id: 'regen', name: 'Regeneration', emoji:'💚',
+    desc: 'Regain 1 HP every 20 seconds.',
+    type: 'passive'
+  },
+  {
+    id: 'shield', name: 'Force Shield', emoji:'🛡️',
+    desc: 'Gain a shield that blocks one hit every 10s.',
+    type: 'passive'
+  },
+  {
+    id: 'magnet', name: 'Magnet', emoji:'🧲',
+    desc: 'Power-ups are pulled toward you from farther away.',
+    type: 'passive'
+  },
+  {
+    id: 'nuke', name: 'Nuke', emoji:'☢️',
+    desc: 'Active: Instantly destroys all enemies on screen. Cooldown: 45s.',
+    type: 'active', cooldown: 45
+  },
+  {
+    id: 'dash', name: 'Dash', emoji:'💨',
+    desc: 'Active: Instantly dash in move direction (invulnerable for 0.4s). Cooldown: 5s.',
+    type: 'active', cooldown: 5
+  }
+];
+
+function getRandomAbilities(count, excludeIDs=[]) {
+  // Choose random abilities not yet chosen, no duplicates
+  const pool = ALL_ABILITIES.filter(a => !excludeIDs.includes(a.id));
+  if (pool.length <= count) return pool;
+  const picks = [];
+  while (picks.length < count) {
+    const idx = Math.floor(Math.random()*pool.length);
+    if (!picks.includes(pool[idx])) picks.push(pool[idx]);
+  }
+  return picks;
+}
+
+const ABILITY_LEVELS = [1,5,10,25,50,100,250,500,1000,2500,5000,10000];
+
+// ---------------------------------------------------------------------------
+//  CANVAS & SETTINGS
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+window.addEventListener('resize',resize);
+resize();
+
+const SETTINGS = {
+  playerSpeed      : 300,
+  bulletSpeed      : 500,
+  enemyBaseSpeed   : 40,
+  enemySpeedCap    : 500,
+  enemySpawnBase   : 1.5,
+  enemySpawnMin    : 0.4,
+  enemySpawnDec    : 0.05,
+  enemySpeedInc    : 10,
+  fireRateBase     : 0.30,
+  fireRateDur      : 5,
+  tempStreamDur    : 5,
+  powerUpInterval  : 15,
+  purpleWeight     : 0.5
+};
+const POWERUPS = [
+  {type:'fireRate',   color:'#00ff99', weight:5},
+  {type:'extraLife',  color:'#aa00ff', weight:SETTINGS.purpleWeight},
+  {type:'extraStream',color:'#ffff00', weight:2},
+  {type:'tempStreams',color:'#ffa500', weight:5}
+];
+
+// ---------------------------------------------------------------------------
+//  GAME STATE
+// ---------------------------------------------------------------------------
+let player, bullets, enemies, enemyBullets, powerUps;
+let keys = {};
+let fireCooldown = 0;
+let fireInterval = SETTINGS.fireRateBase;
+let fireRateTimer = 0, fireRateActive = false;
+let tempStreamTimer = 0, tempStreamsActive = false;
+let tempStreamOffsets = [];
+let enemySpawnTimer = 0, enemySpawnInterval = SETTINGS.enemySpawnBase;
+let powerUpSpawnTimer = 0;
+let score = 0, elapsed = 0, gameOver = false;
+const INVULN_TIME = 1.5;
+let invuln = false, invulnTimer = 0;
+
+// Leveling
+let xp = 0, level = 1;
+let nextLevelXP = 10;
+let pickedAbilities = [];
+let hotkeys = []; // {id, ...ability, cooldown, cooldownLeft}
+let abilityOverlayPending = false;
+let pendingAbilityLevels = []; // levels you need to pick on
+
+// UI
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const messageDiv = document.getElementById('message');
+const levelupOverlay = document.getElementById('levelupOverlay');
+const levelupMsg = document.getElementById('levelupMsg');
+const levelupCards = document.getElementById('levelupCards');
+const hotkeysDiv = document.getElementById('hotkeys');
+const hotkeyList = document.getElementById('hotkeyList');
+
+// ---------------------------------------------------------------------------
+//  LEVELING SYSTEM
+// ---------------------------------------------------------------------------
+function getLevelXP(lv) {
+  if(lv<10)   return 10*lv;
+  if(lv<25)   return 25*lv;
+  if(lv<50)   return 50*lv;
+  if(lv<100)  return 100*lv;
+  if(lv<250)  return 250*lv;
+  if(lv<500)  return 500*lv;
+  if(lv<1000) return 1000*lv;
+  if(lv<2500) return 2500*lv;
+  if(lv<5000) return 5000*lv;
+  return 10000*lv;
+}
+
+function checkLevelUp() {
+  let leveledUp = false;
+  while(xp >= nextLevelXP) {
+    xp -= nextLevelXP;
+    level++;
+    // SLOW INCREMENT: +0.5 per level (adjust to taste)
+    SETTINGS.enemyBaseSpeed = Math.min(
+      SETTINGS.enemySpeedCap,
+      SETTINGS.enemyBaseSpeed + 0.5
+    );
+    nextLevelXP = getLevelXP(level);
+    leveledUp = true;
+    if(ABILITY_LEVELS.includes(level)) pendingAbilityLevels.push(level);
+  }
+  if(leveledUp && pendingAbilityLevels.length) {
+    abilityOverlayPending = true;
+    setTimeout(showAbilityOverlay, 350);
+  }
+}
+
+function addXP(amt) {
+  xp += amt;
+  checkLevelUp();
+}
+
+// ---------------------------------------------------------------------------
+//  ABILITY SYSTEM
+// ---------------------------------------------------------------------------
+function showAbilityOverlay() {
+  if (!pendingAbilityLevels.length) { abilityOverlayPending=false; return; }
+  let pickLevel = pendingAbilityLevels.shift();
+  // Pick 3 random abilities not yet picked
+  let exclude = pickedAbilities.map(a=>a.id);
+  let cards = getRandomAbilities(3, exclude);
+  // Render cards
+  levelupMsg.innerHTML = `Level <span style="color:#9ef">${pickLevel}</span> Up!<br>Choose an ability:`;
+  levelupCards.innerHTML = '';
+  cards.forEach(ability=>{
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML =
+      `<div class="emoji">${ability.emoji||''}</div>
+      <div class="name">${ability.name}</div>
+      <div class="desc">${ability.desc}</div>`;
+    div.onclick = ()=>{
+      pickedAbilities.push(ability);
+      addAbilityToHotkey(ability);
+      levelupOverlay.style.display = 'none';
+      hotkeysDiv.style.display = hotkeys.length>0?'block':'none';
+      // Pause 300ms before resuming
+      setTimeout(()=>{
+        if (pendingAbilityLevels.length) showAbilityOverlay();
+        else abilityOverlayPending = false;
+        if(!gameOver) requestAnimationFrame(loop);
+      }, 200);
+    };
+    levelupCards.appendChild(div);
+  });
+  // Show
+  levelupOverlay.style.display = 'flex';
+  hotkeysDiv.style.display = 'block';
+}
+
+function addAbilityToHotkey(ability) {
+  if(hotkeys.length < 10) {
+    hotkeys.push({...ability, cooldownLeft: 0, active: false});
+  }
+  renderHotkeys();
+}
+
+function renderHotkeys() {
+  hotkeyList.innerHTML = '';
+  for(let i=0;i<hotkeys.length;i++) {
+    const hk = hotkeys[i];
+    let keynum = (i+1)%10 || 10;
+    const div = document.createElement('div');
+    div.className = 'hk';
+    div.innerHTML =
+      `<span class="num">${keynum}</span>
+       <span>${hk.emoji||''}</span>
+       <b>${hk.name}</b>
+       <span style="font-size:0.97em;color:#aaa;">
+       ${hk.type==='active'?('['+(hk.cooldownLeft>0?('CD '+hk.cooldownLeft.toFixed(1)+'s'):'Ready')+']'):'[passive]'}
+       </span>`;
+    hotkeyList.appendChild(div);
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  INPUT
+// ---------------------------------------------------------------------------
+window.addEventListener('keydown',e=>{
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key)) e.preventDefault();
+  // Ability hotkeys: 1-0
+  if(!gameOver && hotkeys.length>0 && !abilityOverlayPending) {
+    let idx = null;
+    if(k>='1' && k<='9') idx = parseInt(k)-1;
+    else if(k==='0') idx = 9;
+    if(idx!==null && hotkeys[idx]) tryUseAbility(idx);
+  }
+});
+window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()] = false; });
+
+function tryUseAbility(idx) {
+  const ab = hotkeys[idx];
+  if(ab.type !== 'active') return;
+  if(ab.cooldownLeft>0) return;
+  ab.cooldownLeft = ab.cooldown;
+  applyAbility(ab);
+  renderHotkeys();
+}
+
+// ---------------------------------------------------------------------------
+//  FACTORIES & SPAWNERS
+// ---------------------------------------------------------------------------
+function initPlayer(){
+  return {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    radius: 12,
+    color: '#1e90ff',
+    lastAngle: -Math.PI/2,
+    streamOffsets: [],
+    lives: 1,
+    shield: false,
+    regenTimer: 0
+  };
+}
+function spawnEnemy(){
+  const edge = Math.floor(Math.random()*4); // 0=top,1=right,2=bottom,3=left
+  const buf = 30;
+  let x,y;
+  if(edge===0){ x=Math.random()*canvas.width; y=-buf; }
+  else if(edge===1){ x=canvas.width+buf; y=Math.random()*canvas.height; }
+  else if(edge===2){ x=Math.random()*canvas.width; y=canvas.height+buf; }
+  else { x=-buf; y=Math.random()*canvas.height; }
+  const type = Math.random() < 0.2 ? 'ranged' : 'melee';
+  enemies.push({
+    x, y,
+    type,
+    radius:14,
+    speed: SETTINGS.enemyBaseSpeed,
+    color: '#ff2e2e',
+    shootCooldown:0,
+    shootInterval:2
+  });
+}
+function choosePowerup(){
+  const total = POWERUPS.reduce((s,p)=>s+p.weight,0);
+  let r = Math.random()*total;
+  for(const p of POWERUPS){
+    if(r<=p.weight) return p;
+    r -= p.weight;
+  }
+  return POWERUPS[POWERUPS.length-1];
+}
+function spawnPowerUp(){
+  const pu = choosePowerup();
+  const x = Math.random()*(canvas.width-40)+20;
+  const y = -20;
+  powerUps.push({
+    x, y,
+    vx:0, vy:80,
+    radius:12,
+    color:pu.color,
+    type:pu.type
+  });
+}
+
+// ---------------------------------------------------------------------------
+//  POWER‑UP EFFECTS
+// ---------------------------------------------------------------------------
+function applyFireRate(){fireRateActive=true;fireRateTimer=0;fireInterval=SETTINGS.fireRateBase*0.5;}
+function applyExtraLife(){player.lives+=1;}
+function applyExtraStream(){
+  const offset=(Math.random()*Math.PI/3)-Math.PI/6;
+  player.streamOffsets.push(offset);
+}
+function applyTempStreams(){
+  tempStreamsActive=true;tempStreamTimer=0;tempStreamOffsets=[];
+  for(let i=0;i<4;i++) tempStreamOffsets.push(i*Math.PI/2);
+}
+
+// ---------------------------------------------------------------------------
+//  ABILITY LOGIC
+// ---------------------------------------------------------------------------
+let nukeActive=false, freezeActive=false, dashActive=false;
+let shieldCooldown = 0;
+function applyAbility(ab) {
+  if(ab.id==='freeze'){
+    freezeActive=true;
+    setTimeout(()=>{freezeActive=false;},2000);
+  }
+  if(ab.id==='nuke'){
+    enemies.length=0; // kill all
+  }
+  if(ab.id==='dash'){
+    dashActive=true;
+    // move quickly in last move direction, brief invuln
+    let dx=0,dy=0;
+    if(keys['arrowup']||keys['w']) dy-=1;
+    if(keys['arrowdown']||keys['s']) dy+=1;
+    if(keys['arrowleft']||keys['a']) dx-=1;
+    if(keys['arrowright']||keys['d']) dx+=1;
+    const len=Math.hypot(dx,dy)||1;
+    player.x+=dx/len*180;
+    player.y+=dy/len*180;
+    invuln=true;
+    setTimeout(()=>{invuln=false;},400);
+    setTimeout(()=>{dashActive=false;},200);
+  }
+  if(ab.id==='turnUndead'){
+    ab.active=true;
+  }
+}
+
+function tickAbilityCooldowns(dt) {
+  for(let ab of hotkeys) {
+    if(ab.type==='active'&&ab.cooldownLeft>0) ab.cooldownLeft=Math.max(0,ab.cooldownLeft-dt);
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  FIRING
+// ---------------------------------------------------------------------------
+function fireBurst(){
+  const base = player.lastAngle;
+  const angles = [0];
+  angles.push(...player.streamOffsets);
+  if(tempStreamsActive) angles.push(...tempStreamOffsets);
+
+  let nBurst = hotkeys.find(a=>a.id==='doubleTap') ? 2 : 1;
+  for(let i=0;i<nBurst;i++) {
+    for(const off of angles){
+      const a = base + off;
+      bullets.push({
+        x: player.x,
+        y: player.y,
+        vx: Math.cos(a)*SETTINGS.bulletSpeed,
+        vy: Math.sin(a)*SETTINGS.bulletSpeed,
+        radius: 4,
+        color: '#ffda44',
+        pierce: hotkeys.find(a=>a.id==='piercingShot')?2:1,
+        ricochet: hotkeys.find(a=>a.id==='ricochet')?1:0,
+        origin:i===0?'main':'double'
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  ENEMY ATTACKS (short‑range projectiles)
+// ---------------------------------------------------------------------------
+const ENEMY_BULLET_SPEED = 250;
+const ENEMY_BULLET_LIFE = 2; // seconds
+function enemyShoot(e){
+  const dx = player.x - e.x;
+  const dy = player.y - e.y;
+  const len = Math.hypot(dx,dy);
+  if(len===0) return;
+  enemyBullets.push({
+    x: e.x,
+    y: e.y,
+    vx: (dx/len)*ENEMY_BULLET_SPEED,
+    vy: (dy/len)*ENEMY_BULLET_SPEED,
+    radius: 5,
+    color: '#ff5555',
+    life: 0
+  });
+}
+
+// ---------------------------------------------------------------------------
+//  UPDATE
+// ---------------------------------------------------------------------------
+function update(dt){
+  if(gameOver || abilityOverlayPending) return;
+  elapsed += dt;
+
+  // ---- player movement ----
+  let mvx = 0, mvy = 0;
+  if(keys['arrowup']   || keys['w']) mvy -= 1;
+  if(keys['arrowdown'] || keys['s']) mvy += 1;
+  if(keys['arrowleft'] || keys['a']) mvx -= 1;
+  if(keys['arrowright']|| keys['d']) mvx += 1;
+
+  if(mvx!==0 || mvy!==0){
+    const len = Math.hypot(mvx,mvy);
+    mvx/=len; mvy/=len;
+    player.x += mvx*SETTINGS.playerSpeed*dt;
+    player.y += mvy*SETTINGS.playerSpeed*dt;
+    player.x = Math.max(player.radius, Math.min(canvas.width-player.radius, player.x));
+    player.y = Math.max(player.radius, Math.min(canvas.height-player.radius, player.y));
+    player.lastAngle = Math.atan2(mvy,mvx);
+  }
+
+  // ---- invulnerability timer ----
+  if(invuln){invulnTimer+=dt;if(invulnTimer>=INVULN_TIME){invuln=false;invulnTimer=0;}}
+
+  // ---- firing ----
+  fireCooldown += dt;
+  if(fireCooldown >= fireInterval){
+    fireBurst();
+    fireCooldown = 0;
+  }
+
+  // ---- bullets ----
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.x += b.vx*dt;
+    b.y += b.vy*dt;
+    if(b.x<-b.radius || b.x>canvas.width+b.radius ||
+       b.y<-b.radius || b.y>canvas.height+b.radius){
+      bullets.splice(i,1);
+    }
+  }
+
+  // ---- enemy bullets ----
+  for(let i=enemyBullets.length-1;i>=0;i--){
+    const eb = enemyBullets[i];
+    eb.x += eb.vx*dt;
+    eb.y += eb.vy*dt;
+    eb.life += dt;
+    if(eb.life > ENEMY_BULLET_LIFE ||
+       eb.x<-eb.radius || eb.x>canvas.width+eb.radius ||
+       eb.y<-eb.radius || eb.y>canvas.height+eb.radius){
+      enemyBullets.splice(i,1);
+      continue;
+    }
+    if(!invuln && dist(eb.x,eb.y,player.x,player.y) < eb.radius+player.radius){
+      takeDamage();
+      enemyBullets.splice(i,1);
+    }
+  }
+
+  // ---- enemies (movement + melee damage + ranged shooting) ----
+  for(let i=enemies.length-1;i>=0;i--){
+    const e = enemies[i];
+    // Freeze? (ability)
+    if(!freezeActive){
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const len = Math.hypot(dx,dy);
+      if(len!==0){
+        e.x += (dx/len)*e.speed*dt;
+        e.y += (dy/len)*e.speed*dt;
+      }
+    }
+
+    if(e.type === 'ranged'){
+      e.shootCooldown += dt;
+      if(e.shootCooldown >= e.shootInterval && !freezeActive){
+        enemyShoot(e);
+        e.shootCooldown = 0;
+      }
+    }
+    if(!invuln && dist(e.x,e.y,player.x,player.y) < e.radius+player.radius){
+      takeDamage();
+    }
+  }
+
+  // ---- bullet‑enemy collision (destroy both) ----
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    for(let j=enemies.length-1;j>=0;j--){
+      const e = enemies[j];
+      if(dist(b.x,b.y,e.x,e.y) < b.radius+e.radius){
+        // ---- Exploding Monster ability
+        if(hotkeys.find(a=>a.id==='explodingMonster')){
+          for(let n=0;n<8;n++){
+            const ang=n*Math.PI/4;
+            bullets.push({
+              x:e.x,y:e.y,
+              vx:Math.cos(ang)*SETTINGS.bulletSpeed*0.7,
+              vy:Math.sin(ang)*SETTINGS.bulletSpeed*0.7,
+              radius:4,color:'#fa6',
+              pierce:1, ricochet:0, origin:'explosion'
+            });
+          }
+        }
+        // ---- Turn Undead
+        let ab = hotkeys.find(a=>a.id==='turnUndead'&&a.active);
+        if(ab){
+          ab.active=false;
+          // Find nearest other enemy
+          let minDist=99999, tgt=null;
+          for(let k=0;k<enemies.length;k++){
+            if(k!==j){
+              let d=dist(e.x,e.y,enemies[k].x,enemies[k].y);
+              if(d<minDist){minDist=d;tgt=k;}
+            }
+          }
+          if(tgt!==null){
+            // Simulate suicide attack
+            enemies.splice(tgt,1);
+            setTimeout(()=>{},0);
+            addXP(e.type==='melee'?1:2);
+          }
+        }
+        // ---- Ricochet
+        if(b.ricochet>0){
+          let minDist=99999, tgt=null;
+          for(let k=0;k<enemies.length;k++){
+            if(k!==j){
+              let d=dist(e.x,e.y,enemies[k].x,enemies[k].y);
+              if(d<minDist){minDist=d;tgt=k;}
+            }
+          }
+          if(tgt!==null){
+            // Shoot bullet at nearest enemy
+            let tgtE = enemies[tgt];
+            let dx = tgtE.x-e.x, dy = tgtE.y-e.y;
+            let len = Math.hypot(dx,dy)||1;
+            bullets.push({
+              x:e.x,y:e.y,
+              vx:(dx/len)*SETTINGS.bulletSpeed,
+              vy:(dy/len)*SETTINGS.bulletSpeed,
+              radius:4,color:'#4cf',
+              pierce:1, ricochet:0, origin:'ricochet'
+            });
+          }
+        }
+        // ---- Piercing Shot
+        if(b.pierce>1){
+          b.pierce--;
+          enemies.splice(j,1);
+          addXP(e.type==='melee'?1:2);
+          continue; // Don't remove bullet
+        }
+        // Normal kill
+        bullets.splice(i,1);
+        enemies.splice(j,1);
+        addXP(e.type==='melee'?1:2);
+        break;
+      }
+    }
+  }
+
+  // ---- enemy spawning ----
+  enemySpawnTimer += dt;
+  if(enemySpawnTimer >= enemySpawnInterval){
+    spawnEnemy();
+    enemySpawnTimer = 0;
+  }
+
+  // ---- power‑up spawning ----
+  powerUpSpawnTimer += dt;
+  if(powerUpSpawnTimer >= SETTINGS.powerUpInterval){
+    spawnPowerUp();
+    powerUpSpawnTimer = 0;
+  }
+
+  // ---- power‑up collection & timers ----
+  for(let i=powerUps.length-1;i>=0;i--){
+    const pu = powerUps[i];
+    // Magnet ability
+    let mag = hotkeys.find(a=>a.id==='magnet') ? 1.5 : 1.0;
+    if(mag>1){
+      let dx = player.x-pu.x, dy=player.y-pu.y, len=Math.hypot(dx,dy);
+      if(len<320){
+        pu.vx = (dx/len)*80*mag;
+        pu.vy = (dy/len)*80*mag;
+      }
+    }
+    pu.x += pu.vx*dt;
+    pu.y += pu.vy*dt;
+    if(dist(pu.x,pu.y,player.x,player.y) < pu.radius+player.radius){
+      switch(pu.type){
+        case 'fireRate'   : applyFireRate();   break;
+        case 'extraLife'  : applyExtraLife();  break;
+        case 'extraStream': applyExtraStream();break;
+        case 'tempStreams': applyTempStreams();break;
+      }
+      powerUps.splice(i,1);
+      continue;
+    }
+    if(pu.y - pu.radius > canvas.height) powerUps.splice(i,1);
+  }
+
+  // ---- fire‑rate buff timer ----
+  if(fireRateActive){
+    fireRateTimer += dt;
+    if(fireRateTimer >= SETTINGS.fireRateDur){
+      fireRateActive = false;
+      fireInterval = SETTINGS.fireRateBase;
+    }
+  }
+  if(tempStreamsActive){
+    tempStreamTimer += dt;
+    if(tempStreamTimer >= SETTINGS.tempStreamDur){
+      tempStreamsActive = false;
+      tempStreamOffsets = [];
+    }
+  }
+
+  // ---- difficulty scaling (every 30 s) ----
+  if(Math.floor(elapsed/30) > Math.floor((elapsed-dt)/30)){
+    SETTINGS.enemyBaseSpeed = Math.min(
+      SETTINGS.enemySpeedCap,
+      SETTINGS.enemyBaseSpeed + SETTINGS.enemySpeedInc
+    );
+    enemySpawnInterval = Math.max(
+      SETTINGS.enemySpawnMin,
+      enemySpawnInterval - SETTINGS.enemySpawnDec
+    );
+  }
+
+  // ---- passive abilities
+  // Regeneration
+  let regenAb = hotkeys.find(a=>a.id==='regen');
+  if(regenAb){
+    player.regenTimer = (player.regenTimer||0)+dt;
+    if(player.regenTimer>=20){
+      player.lives++;
+      player.regenTimer=0;
+    }
+  }
+  // Shield
+  let shieldAb = hotkeys.find(a=>a.id==='shield');
+  if(shieldAb){
+    shieldCooldown = (shieldCooldown||0)+dt;
+    if(shieldCooldown>=10){
+      player.shield = true;
+      shieldCooldown=0;
+    }
+  }
+  // Tick active ability cooldowns
+  tickAbilityCooldowns(dt);
+}
+
+// ---------------------------------------------------------------------------
+//  DAMAGE / DEATH
+// ---------------------------------------------------------------------------
+function takeDamage(){
+  if(invuln) return;
+  if(player.shield){player.shield=false;return;}
+  player.lives--;
+  if(player.lives <= 0){
+    endGame();
+  }else{
+    player.x = canvas.width/2;
+    player.y = canvas.height/2;
+    invuln = true;
+    invulnTimer = 0;
+  }
+}
+function endGame(){
+  gameOver = true;
+  messageDiv.innerHTML =
+    `<h2>Game Over</h2>
+    <p>Score: <strong>${score}</strong></p>
+    <p>Time survived: <strong>${elapsed.toFixed(1)} s</strong></p>
+    <p>Level: <strong>${level}</strong></p>
+    <p>Press Start to play again</p>`;
+  overlay.style.display = 'flex';
+  hotkeysDiv.style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+//  RENDERING
+// ---------------------------------------------------------------------------
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // player (flicker when invuln)
+  if(invuln){ctx.globalAlpha = Math.abs(Math.sin(invulnTimer*20))*0.5 + 0.5;}
+  drawCircle(player);
+  if(player.shield){
+    ctx.save();
+    ctx.strokeStyle='#8ff';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(player.x,player.y,player.radius+6,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
+  // bullets
+  bullets.forEach(drawCircle);
+  enemyBullets.forEach(drawCircle);
+
+  // enemies
+  enemies.forEach(drawEnemy);
+
+  // power‑ups
+  powerUps.forEach(drawCircle);
+
+  // UI
+  ctx.fillStyle = '#fff';
+  ctx.font = '20px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${score}`,20,30);
+  ctx.fillText(`Time: ${elapsed.toFixed(1)}s`,20,58);
+  ctx.fillText(`Lives: ${player.lives}`,20,86);
+  ctx.fillText(`Level: ${level}`,20,114);
+  ctx.fillText(`XP: ${xp} / ${nextLevelXP}`,20,142);
+
+  // Draw XP bar
+  let barW=220, barH=12, barX=20, barY=155;
+  ctx.fillStyle='#222';ctx.fillRect(barX,barY,barW,barH);
+  ctx.fillStyle='#8f8';ctx.fillRect(barX,barY,barW*Math.min(1,xp/nextLevelXP),barH);
+  ctx.strokeStyle='#333';ctx.strokeRect(barX,barY,barW,barH);
+
+  ctx.fillStyle='#fff';
+  ctx.fillText(`Streams: ${1+player.streamOffsets.length+(tempStreamsActive?4:0)}`,20,184);
+  if(fireRateActive){
+    ctx.fillText(`Fire Rate ↑ ${(SETTINGS.fireRateDur-fireRateTimer).toFixed(1)}s`,20,212);
+  }
+  if(tempStreamsActive){
+    ctx.fillText(`+4 Streams ${(SETTINGS.tempStreamDur-tempStreamTimer).toFixed(1)}s`,20,240);
+  }
+}
+
+function drawCircle(o){
+  ctx.beginPath();
+  ctx.arc(o.x,o.y,o.radius,0,Math.PI*2);
+  ctx.fillStyle = o.color;
+  ctx.fill();
+}
+function drawEnemy(e){
+  if(e.type === 'melee'){
+    const size = e.radius;
+    const ang = Math.atan2(player.y - e.y, player.x - e.x);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(size*0.9, size);
+    ctx.lineTo(-size*0.9, size);
+    ctx.closePath();
+    ctx.fillStyle = e.color;
+    ctx.fill();
+    ctx.restore();
+  }else{
+    const s = e.radius;
+    ctx.fillStyle = '#ff8844';
+    ctx.fillRect(e.x - s, e.y - s, s*2, s*2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  MAIN LOOP
+// ---------------------------------------------------------------------------
+let lastTime = 0;
+function loop(timestamp){
+  if(abilityOverlayPending) return;
+  const dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+  if(!gameOver) {
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  START / RESTART
+// ---------------------------------------------------------------------------
+function startGame(){
+  // reset everything
+  player = initPlayer();
+  bullets = [];
+  enemies = [];
+  enemyBullets = [];
+  powerUps = [];
+  keys = {};
+  fireCooldown = 0;
+  fireInterval = SETTINGS.fireRateBase;
+  fireRateActive = false;
+  fireRateTimer = 0;
+  tempStreamsActive = false;
+  tempStreamTimer = 0;
+  tempStreamOffsets = [];
+  enemySpawnTimer = 0;
+  enemySpawnInterval = SETTINGS.enemySpawnBase;
+  powerUpSpawnTimer = 0;
+  score = 0;
+  elapsed = 0;
+  gameOver = false;
+  invuln = false;
+  invulnTimer = 0;
+
+  xp = 0; level = 1; nextLevelXP = 10;
+  pickedAbilities = [];
+  hotkeys = [];
+  abilityOverlayPending = true;
+  pendingAbilityLevels = [1];
+
+  overlay.style.display = 'none';
+  hotkeysDiv.style.display = 'none';
+  renderHotkeys();
+
+  lastTime = performance.now();
+  showAbilityOverlay();
+}
+
+startBtn.addEventListener('click', startGame);
+
+})(); // end IIFE
+</script>
+</body>
+</html>

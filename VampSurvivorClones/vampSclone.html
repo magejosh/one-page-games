@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vampire Survivors – Bullet‑Hell Clone</title>
+<style>
+  html,body{
+    margin:0;
+    padding:0;
+    overflow:hidden;
+    background:#111;
+    height:100%;
+    font-family:sans-serif;
+    color:#fff;
+  }
+  #gameCanvas{display:block;background:#111;}
+  #overlay{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.85);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:10;text-align:center;
+  }
+  #overlay button{
+    margin-top:20px;
+    padding:10px 25px;
+    font-size:18px;
+    cursor:pointer;
+    border:none;
+    background:#1e90ff;
+    color:#fff;
+    border-radius:5px;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<div id="overlay">
+  <div id="message">Press Start to Play</div>
+  <button id="startBtn">Start</button>
+</div>
+
+<script>
+(() => {
+  // ------------------------------------------------------------
+  //  SETTINGS & CANVAS
+  // ------------------------------------------------------------
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('startBtn');
+
+  function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+  window.addEventListener('resize',resize);
+  resize();
+
+  const SETTINGS = {
+    playerSpeed      : 300,
+    bulletSpeed      : 500,
+    enemyBaseSpeed   : 80,
+    enemySpeedCap    : 500,
+    enemySpawnBase   : 1.5,
+    enemySpawnMin    : 0.4,
+    enemySpawnDec    : 0.05,   // seconds reduced every 30 s
+    enemySpeedInc    : 10,     // px/s added every 30 s
+    fireRateBase     : 0.30,   // seconds between bursts
+    fireRateDur      : 5,      // seconds (green)
+    tempStreamDur    : 5,      // seconds (orange)
+    powerUpInterval  : 15,     // seconds
+    purpleWeight     : 0.5     // rarity (extra life)
+  };
+
+  const POWERUPS = [
+    {type:'fireRate',   color:'#00ff99', weight:5},                     // green
+    {type:'extraLife',  color:'#aa00ff', weight:SETTINGS.purpleWeight}, // purple
+    {type:'extraStream',color:'#ffff00', weight:2},                     // yellow
+    {type:'tempStreams',color:'#ffa500', weight:5}                      // orange
+  ];
+
+  // ------------------------------------------------------------
+  //  GAME STATE
+  // ------------------------------------------------------------
+  let player, bullets, enemies, enemyBullets, powerUps;
+  let keys = {};
+
+  let fireCooldown = 0;               // time since last burst
+  let fireInterval = SETTINGS.fireRateBase;
+  let fireRateTimer = 0, fireRateActive = false;
+
+  let tempStreamTimer = 0, tempStreamsActive = false;
+  let tempStreamOffsets = [];
+
+  let enemySpawnTimer = 0, enemySpawnInterval = SETTINGS.enemySpawnBase;
+  let powerUpSpawnTimer = 0;
+
+  let score = 0, elapsed = 0, gameOver = false;
+
+  const INVULN_TIME = 1.5;
+  let invuln = false, invulnTimer = 0;
+
+  // ------------------------------------------------------------
+  //  HELPERS
+  // ------------------------------------------------------------
+  // distance between two points – needed by many collisions
+  function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+
+  // ------------------------------------------------------------
+  //  INPUT
+  // ------------------------------------------------------------
+  window.addEventListener('keydown',e=>{
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key)) e.preventDefault();
+  });
+  window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()] = false; });
+
+  // ------------------------------------------------------------
+  //  FACTORIES & SPAWNERS
+  // ------------------------------------------------------------
+  function initPlayer(){
+    return {
+      x: canvas.width/2,
+      y: canvas.height/2,
+      radius: 12,
+      color: '#1e90ff',
+      lastAngle: -Math.PI/2,        // default pointing up
+      streamOffsets: [],            // permanent extra streams (yellow)
+      lives: 1
+    };
+  }
+
+  function spawnEnemy(){
+    const edge = Math.floor(Math.random()*4); // 0=top,1=right,2=bottom,3=left
+    const buf = 30;
+    let x,y;
+    if(edge===0){ x=Math.random()*canvas.width; y=-buf; }
+    else if(edge===1){ x=canvas.width+buf; y=Math.random()*canvas.height; }
+    else if(edge===2){ x=Math.random()*canvas.width; y=canvas.height+buf; }
+    else { x=-buf; y=Math.random()*canvas.height; }
+    const type = Math.random() < 0.2 ? 'ranged' : 'melee'; // 20% ranged
+    enemies.push({
+      x, y,
+      type,
+      radius:14,
+      speed: SETTINGS.enemyBaseSpeed,
+      color: '#ff2e2e',
+      shootCooldown:0,
+      shootInterval:2               // seconds (ranged enemies)
+    });
+  }
+
+  function choosePowerup(){
+    const total = POWERUPS.reduce((s,p)=>s+p.weight,0);
+    let r = Math.random()*total;
+    for(const p of POWERUPS){
+      if(r<=p.weight) return p;
+      r -= p.weight;
+    }
+    return POWERUPS[POWERUPS.length-1];
+  }
+
+  function spawnPowerUp(){
+    const pu = choosePowerup();
+    const x = Math.random()*(canvas.width-40)+20;
+    const y = -20;
+    powerUps.push({
+      x, y,
+      vx:0, vy:80,
+      radius:12,
+      color:pu.color,
+      type:pu.type
+    });
+  }
+
+  // ------------------------------------------------------------
+  //  POWER‑UP EFFECTS
+  // ------------------------------------------------------------
+  function applyFireRate(){
+    fireRateActive = true;
+    fireRateTimer = 0;
+    fireInterval = SETTINGS.fireRateBase*0.5; // double fire‑rate
+  }
+
+  function applyExtraLife(){ player.lives += 1; }
+
+  function applyExtraStream(){
+    // random ±30° offset
+    const offset = (Math.random()*Math.PI/3) - Math.PI/6;
+    player.streamOffsets.push(offset);
+  }
+
+  function applyTempStreams(){
+    tempStreamsActive = true;
+    tempStreamTimer = 0;
+    tempStreamOffsets = [];
+    for(let i=0;i<4;i++) tempStreamOffsets.push(i*Math.PI/2); // 0°,90°,180°,270°
+  }
+
+  // ------------------------------------------------------------
+  //  FIRING
+  // ------------------------------------------------------------
+  function fireBurst(){
+    const base = player.lastAngle;
+    const angles = [0];                     // always fire the base stream
+    angles.push(...player.streamOffsets);   // permanent yellow streams
+    if(tempStreamsActive) angles.push(...tempStreamOffsets); // orange temporary streams
+
+    for(const off of angles){
+      const a = base + off;
+      bullets.push({
+        x: player.x,
+        y: player.y,
+        vx: Math.cos(a)*SETTINGS.bulletSpeed,
+        vy: Math.sin(a)*SETTINGS.bulletSpeed,
+        radius: 4,
+        color: '#ffda44'
+      });
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  ENEMY ATTACKS (short‑range projectiles)
+  // ------------------------------------------------------------
+  const ENEMY_BULLET_SPEED = 250;
+  const ENEMY_BULLET_LIFE = 2; // seconds
+
+  function enemyShoot(e){
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const len = Math.hypot(dx,dy);
+    if(len===0) return;
+    enemyBullets.push({
+      x: e.x,
+      y: e.y,
+      vx: (dx/len)*ENEMY_BULLET_SPEED,
+      vy: (dy/len)*ENEMY_BULLET_SPEED,
+      radius: 5,
+      color: '#ff5555',
+      life: 0
+    });
+  }
+
+  // ------------------------------------------------------------
+  //  UPDATE
+  // ------------------------------------------------------------
+  function update(dt){
+    if(gameOver) return;
+    elapsed += dt;
+
+    // ---- player movement ----
+    let mvx = 0, mvy = 0;
+    if(keys['arrowup']   || keys['w']) mvy -= 1;
+    if(keys['arrowdown'] || keys['s']) mvy += 1;
+    if(keys['arrowleft'] || keys['a']) mvx -= 1;
+    if(keys['arrowright']|| keys['d']) mvx += 1;
+
+    if(mvx!==0 || mvy!==0){
+      const len = Math.hypot(mvx,mvy);
+      mvx/=len; mvy/=len;
+      player.x += mvx*SETTINGS.playerSpeed*dt;
+      player.y += mvy*SETTINGS.playerSpeed*dt;
+      // keep inside canvas
+      player.x = Math.max(player.radius, Math.min(canvas.width-player.radius, player.x));
+      player.y = Math.max(player.radius, Math.min(canvas.height-player.radius, player.y));
+      player.lastAngle = Math.atan2(mvy,mvx);
+    }
+
+    // ---- invulnerability timer ----
+    if(invuln){
+      invulnTimer += dt;
+      if(invulnTimer >= INVULN_TIME){
+        invuln = false;
+        invulnTimer = 0;
+      }
+    }
+
+    // ---- firing ----
+    fireCooldown += dt;
+    if(fireCooldown >= fireInterval){
+      fireBurst();
+      fireCooldown = 0;
+    }
+
+    // ---- bullets ----
+    for(let i=bullets.length-1;i>=0;i--){
+      const b = bullets[i];
+      b.x += b.vx*dt;
+      b.y += b.vy*dt;
+      if(b.x<-b.radius || b.x>canvas.width+b.radius ||
+         b.y<-b.radius || b.y>canvas.height+b.radius){
+        bullets.splice(i,1);
+      }
+    }
+
+    // ---- enemy bullets ----
+    for(let i=enemyBullets.length-1;i>=0;i--){
+      const eb = enemyBullets[i];
+      eb.x += eb.vx*dt;
+      eb.y += eb.vy*dt;
+      eb.life += dt;
+      if(eb.life > ENEMY_BULLET_LIFE ||
+         eb.x<-eb.radius || eb.x>canvas.width+eb.radius ||
+         eb.y<-eb.radius || eb.y>canvas.height+eb.radius){
+        enemyBullets.splice(i,1);
+        continue;
+      }
+      // player hit?
+      if(!invuln && dist(eb.x,eb.y,player.x,player.y) < eb.radius+player.radius){
+        takeDamage();
+        enemyBullets.splice(i,1);
+      }
+    }
+
+    // ---- enemies (movement + melee damage + ranged shooting) ----
+    for(let i=enemies.length-1;i>=0;i--){
+      const e = enemies[i];
+      const dx = player.x - e.x;
+      const dy = player.y - e.y;
+      const len = Math.hypot(dx,dy);
+      if(len!==0){
+        e.x += (dx/len)*e.speed*dt;
+        e.y += (dy/len)*e.speed*dt;
+      }
+
+      // ranged enemies fire
+      if(e.type === 'ranged'){
+        e.shootCooldown += dt;
+        if(e.shootCooldown >= e.shootInterval){
+          enemyShoot(e);
+          e.shootCooldown = 0;
+        }
+      }
+
+      // melee collision
+      if(!invuln && dist(e.x,e.y,player.x,player.y) < e.radius+player.radius){
+        takeDamage();
+      }
+    }
+
+    // ---- bullet‑enemy collision (destroy both) ----
+    for(let i=bullets.length-1;i>=0;i--){
+      const b = bullets[i];
+      for(let j=enemies.length-1;j>=0;j--){
+        const e = enemies[j];
+        if(dist(b.x,b.y,e.x,e.y) < b.radius+e.radius){
+          bullets.splice(i,1);
+          enemies.splice(j,1);
+          score++;
+          break; // break inner loop, bullet gone
+        }
+      }
+    }
+
+    // ---- enemy spawning ----
+    enemySpawnTimer += dt;
+    if(enemySpawnTimer >= enemySpawnInterval){
+      spawnEnemy();
+      enemySpawnTimer = 0;
+    }
+
+    // ---- power‑up spawning ----
+    powerUpSpawnTimer += dt;
+    if(powerUpSpawnTimer >= SETTINGS.powerUpInterval){
+      spawnPowerUp();
+      powerUpSpawnTimer = 0;
+    }
+
+    // ---- power‑up collection & timers ----
+    for(let i=powerUps.length-1;i>=0;i--){
+      const pu = powerUps[i];
+      pu.x += pu.vx*dt;
+      pu.y += pu.vy*dt;
+
+      // collect?
+      if(dist(pu.x,pu.y,player.x,player.y) < pu.radius+player.radius){
+        switch(pu.type){
+          case 'fireRate'   : applyFireRate();   break;
+          case 'extraLife'  : applyExtraLife();  break;
+          case 'extraStream': applyExtraStream();break;
+          case 'tempStreams': applyTempStreams();break;
+        }
+        powerUps.splice(i,1);
+        continue;
+      }
+      // remove when off‑screen
+      if(pu.y - pu.radius > canvas.height) powerUps.splice(i,1);
+    }
+
+    // ---- fire‑rate buff timer ----
+    if(fireRateActive){
+      fireRateTimer += dt;
+      if(fireRateTimer >= SETTINGS.fireRateDur){
+        fireRateActive = false;
+        fireInterval = SETTINGS.fireRateBase;
+      }
+    }
+
+    // ---- temporary streams timer ----
+    if(tempStreamsActive){
+      tempStreamTimer += dt;
+      if(tempStreamTimer >= SETTINGS.tempStreamDur){
+        tempStreamsActive = false;
+        tempStreamOffsets = [];
+      }
+    }
+
+    // ---- difficulty scaling (every 30 s) ----
+    if(Math.floor(elapsed/30) > Math.floor((elapsed-dt)/30)){
+      // speed up enemies
+      SETTINGS.enemyBaseSpeed = Math.min(
+        SETTINGS.enemySpeedCap,
+        SETTINGS.enemyBaseSpeed + SETTINGS.enemySpeedInc
+      );
+      // spawn faster
+      enemySpawnInterval = Math.max(
+        SETTINGS.enemySpawnMin,
+        enemySpawnInterval - SETTINGS.enemySpawnDec
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  DAMAGE / DEATH
+  // ------------------------------------------------------------
+  function takeDamage(){
+    if(invuln) return;
+    player.lives--;
+    if(player.lives <= 0){
+      endGame();
+    }else{
+      // teleport to centre and become briefly invuln
+      player.x = canvas.width/2;
+      player.y = canvas.height/2;
+      invuln = true;
+      invulnTimer = 0;
+    }
+  }
+
+  function endGame(){
+    gameOver = true;
+    messageDiv.innerHTML = `
+      <h2>Game Over</h2>
+      <p>Score: <strong>${score}</strong></p>
+      <p>Time survived: <strong>${elapsed.toFixed(1)} s</strong></p>
+      <p>Press Start to play again</p>`;
+    overlay.style.display = 'flex';
+  }
+
+  // ------------------------------------------------------------
+  //  RENDERING
+  // ------------------------------------------------------------
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // player (flicker when invuln)
+    if(invuln){
+      ctx.globalAlpha = Math.abs(Math.sin(invulnTimer*20))*0.5 + 0.5;
+    }
+    drawCircle(player);
+    ctx.globalAlpha = 1;
+
+    // bullets
+    bullets.forEach(drawCircle);
+    enemyBullets.forEach(drawCircle);
+
+    // enemies (triangles = melee, squares = ranged)
+    enemies.forEach(drawEnemy);
+
+    // power‑ups
+    powerUps.forEach(drawCircle);
+
+    // UI
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Score: ${score}`,20,30);
+    ctx.fillText(`Time: ${elapsed.toFixed(1)}s`,20,58);
+    ctx.fillText(`Lives: ${player.lives}`,20,86);
+    ctx.fillText(`Streams: ${1 + player.streamOffsets.length + (tempStreamsActive?4:0)}`,20,114);
+    if(fireRateActive){
+      ctx.fillText(`Fire Rate ↑ ${ (SETTINGS.fireRateDur - fireRateTimer).toFixed(1) }s`,20,142);
+    }
+    if(tempStreamsActive){
+      ctx.fillText(`+4 Streams ${ (SETTINGS.tempStreamDur - tempStreamTimer).toFixed(1) }s`,20,170);
+    }
+  }
+
+  function drawCircle(o){
+    ctx.beginPath();
+    ctx.arc(o.x,o.y,o.radius,0,Math.PI*2);
+    ctx.fillStyle = o.color;
+    ctx.fill();
+  }
+
+  function drawEnemy(e){
+    if(e.type === 'melee'){
+      // draw a triangle pointing at the player
+      const size = e.radius;
+      const ang = Math.atan2(player.y - e.y, player.x - e.x);
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size*0.9, size);
+      ctx.lineTo(-size*0.9, size);
+      ctx.closePath();
+      ctx.fillStyle = e.color;
+      ctx.fill();
+      ctx.restore();
+    }else{
+      // ranged – simple square
+      const s = e.radius;
+      ctx.fillStyle = '#ff8844';
+      ctx.fillRect(e.x - s, e.y - s, s*2, s*2);
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  MAIN LOOP
+  // ------------------------------------------------------------
+  let lastTime = 0;
+  function loop(timestamp){
+    const dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    if(!gameOver){
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+  }
+
+  // ------------------------------------------------------------
+  //  START / RESTART
+  // ------------------------------------------------------------
+  const messageDiv = document.getElementById('message');
+
+  function startGame(){
+    // reset everything
+    player = initPlayer();
+    bullets = [];
+    enemies = [];
+    enemyBullets = [];
+    powerUps = [];
+    keys = {};
+    fireCooldown = 0;
+    fireInterval = SETTINGS.fireRateBase;
+    fireRateActive = false;
+    fireRateTimer = 0;
+    tempStreamsActive = false;
+    tempStreamTimer = 0;
+    tempStreamOffsets = [];
+    enemySpawnTimer = 0;
+    enemySpawnInterval = SETTINGS.enemySpawnBase;
+    powerUpSpawnTimer = 0;
+    score = 0;
+    elapsed = 0;
+    gameOver = false;
+    invuln = false;
+    invulnTimer = 0;
+    overlay.style.display = 'none';
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener('click', startGame);
+})(); // end IIFE
+</script>
+</body>
+</html>

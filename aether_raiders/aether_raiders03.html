@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aether Empires — Turn-Based 4X Mini</title>
+<style>
+  :root{
+    --bg:#050813; --fg:#e8f1ff; --panel:#10172b; --panel2:#0d1426;
+    --accent:#7fffd4; --accent2:#ff9cf6; --ok:#8cff82; --warn:#ff6b7a;
+  }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.2 system-ui,Segoe UI,Roboto,Ubuntu,Arial;}
+  #uiRoot{position:fixed;inset:0;overflow:hidden}
+  #game{position:absolute;inset:0;display:block;z-index:1}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,8,18,.78);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:50}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid #1f2a4d;border-radius:14px;box-shadow:0 0 24px rgba(127,255,212,.15);padding:16px 18px;max-width:980px}
+  .title{font-size:22px;margin:0 0 6px}
+  .sub{opacity:.85;margin:.25rem 0 .8rem}
+  .btn,.act{display:inline-block;border:1px solid #2a3a6a;background:#0f1630;color:var(--fg);padding:9px 12px;border-radius:10px;cursor:pointer;user-select:none}
+  .btn:hover,.act:hover{background:#162147}
+  .chip{border:1px solid #2a3a6a;background:#0f1630;padding:5px 9px;border-radius:999px;margin:2px;font-size:12px}
+  .bar{position:absolute;left:12px;top:10px;background:rgba(12,16,32,.58);border:1px solid #1c284f;border-radius:10px;padding:8px 12px;z-index:20}
+  .barR{left:auto;right:12px}
+  .bottomBar{position:absolute;left:12px;right:12px;bottom:10px;z-index:25;background:rgba(12,16,32,.58);border:1px solid #1c284f;border-radius:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;min-height:58px}
+  .kbd{display:inline-block;border:1px solid #3b4b7f;padding:2px 6px;border-radius:6px;background:#0f1630;margin:0 4px}
+  .tiny{font-size:12px;opacity:.85}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+  .list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .slot{display:flex;align-items:center;gap:8px;border:1px solid #253260;background:#0d1426;padding:6px 8px;border-radius:10px}
+  .radio{padding:6px 10px;border-radius:10px;border:1px solid #2a3a6a;background:#0f1630;cursor:pointer}
+  .radio.sel{outline:2px solid var(--accent)}
+  label{user-select:none}
+  input,select{background:#0f1630;border:1px solid #2a3a6a;color:var(--fg);border-radius:8px;padding:6px 8px}
+</style>
+</head>
+<body>
+<div id="uiRoot">
+  <canvas id="game"></canvas>
+
+  <!-- Start / Setup -->
+  <div id="startOverlay" class="overlay">
+    <div class="card">
+      <h1 class="title">Aether Empires</h1>
+      <div class="sub">Turn-based 4X mini (MoO + Alpha Centauri vibes) with zoom/pan and colony management.</div>
+      <div id="setup" class="list">
+        <div class="row">
+          <label># AIs: <select id="aiCount">
+            <option>0</option><option selected>2</option><option>3</option><option>4</option>
+          </select></label>
+          <label>Map Size:
+            <select id="mapSize"><option value="36">Small</option><option value="52" selected>Standard</option><option value="68">Large</option></select>
+          </label>
+          <label>Turn Length:
+            <select id="turnLen"><option value="8">Fast (8)</option><option value="12" selected>Classic (12)</option><option value="16">Leisure (16)</option></select>
+          </label>
+        </div>
+        <div><b>Species</b> (pick for you; AIs get random):</div>
+        <div class="row" id="speciesRow"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="startBtn">Start Game</button>
+        <button class="btn" id="howBtn">How to Play</button>
+      </div>
+      <div class="tiny" style="margin-top:.6rem">
+        Wheel = zoom • Right-drag = pan • <span class="kbd">E</span> End Turn • <span class="kbd">R</span> Research • <span class="kbd">P</span> Policies • <span class="kbd">0</span> reset camera
+      </div>
+    </div>
+  </div>
+
+  <!-- Help -->
+  <div id="helpOverlay" class="overlay" style="display:none">
+    <div class="card">
+      <h2 class="title">Quick Guide</h2>
+      <div class="sub">
+        1) Click a star to select. If you own it, click <b>Manage</b> to open the colony panel (queue ships/projects, set focus/policies).<br>
+        2) Click <b>Select Ship</b> (Scout/Colony/Frigate), then click a glowing reachable star to set orders.<br>
+        3) Click <b>Research</b> or <b>Policies</b> (✓ shows applied).<br>
+        4) Press <b>End Turn</b> (or button) to process all empires simultaneously.
+      </div>
+      <div><button class="btn" id="closeHelp">Close</button></div>
+    </div>
+  </div>
+
+  <div class="bar" id="leftBar"></div>
+  <div class="bar barR" id="rightBar"></div>
+  <div class="bottomBar" id="bottomBar"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ====== Utils ====== */
+const DPR=Math.max(1,Math.min(2,devicePixelRatio||1));
+const rand=(n=1)=>Math.random()*n, randi=(a,b)=>Math.floor(a+Math.random()*(b-a+1));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); const lerp=(a,b,t)=>a+(b-a)*t;
+const now=()=>performance.now(); const dist=(a,b)=>Math.hypot(a.x-b.x);
+const pick=a=>a[(Math.random()*a.length)|0];
+
+/* ====== Canvas & Camera ====== */
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+let W=0,H=0; function resize(){W=canvas.width=Math.floor(innerWidth*DPR);H=canvas.height=Math.floor(innerHeight*DPR);canvas.style.width=(W/DPR)+'px';canvas.style.height=(H/DPR)+'px';}
+resize(); addEventListener('resize',resize);
+
+const camera={x:1000,y:700,z:1};
+function resetCam(){camera.x=1000;camera.y=700;camera.z=1;}
+function screenToWorld(sx,sy){const cx=W/2,cy=H/2;return {x:(sx-cx)/camera.z + camera.x*DPR, y:(sy-cy)/camera.z + camera.y*DPR};}
+
+/* ====== Data ====== */
+const COLORS={ player:"#7fffd4", ai:"#ff9cf6", ai2:"#8be3ff", neutral:"#9db1d6" };
+const SPECIES=[
+  {id:"human", name:"Human", color:COLORS.player, perks:{range:1.1,research:1.1}, desc:"+10% range, +10% research"},
+  {id:"seraph", name:"Optic Seraph", color:"#c5b3ff", perks:{research:1.2,hp:0.9}, desc:"+20% research, -10% ship HP"},
+  {id:"myriad", name:"Glacial Myriad", color:"#8be3ff", perks:{prod:1.2,growth:0.9}, desc:"+20% production, -10% growth"},
+  {id:"nomad", name:"Nomad Synths", color:"#ffaed1", perks:{speed:1.15,range:1.15,growth:0.8}, desc:"+15% ship speed & range, -20% growth"},
+];
+const SHIPS={
+  Scout:{hp:18,dmg:3,rof:1.1,spd:90,cost:{metal:40,crystal:10},build:6,upkeep:0},
+  Colony:{hp:40,dmg:1,rof:0.6,spd:65,cost:{metal:90,crystal:25,aether:10},build:12,upkeep:1},
+  Frigate:{hp:80,dmg:8,rof:0.9,spd:80,cost:{metal:120,crystal:45},build:14,upkeep:1}
+};
+const TECHS=[
+  {id:'warp',name:'Warp Drives I',desc:'+20% jump range.',cost:120},
+  {id:'lasers',name:'Coherent Lasers',desc:'+20% ship damage.',cost:150},
+  {id:'shields',name:'Phase Shields',desc:'+25% ship HP.',cost:180},
+  {id:'robots',name:'Assembly Drones',desc:'+20% colony production.',cost:160},
+  {id:'bio',name:'Bioforming',desc:'+20% colony growth.',cost:140},
+  {id:'ascend',name:'Ascension Theory',desc:'Unlocks Ascension Gate project.',cost:260}
+};
+const POLICIES={
+  Government:[
+    {id:'dem',name:'Democracy',desc:'+15% research.',mods:{research:1.15}},
+    {id:'aut',name:'Autocracy',desc:'+15% ship dmg.',mods:{dmg:1.15}},
+    {id:'col',name:'Collective',desc:'+15% production.',mods:{prod:1.15}},
+  ],
+  Economy:[
+    {id:'free',name:'Free Market',desc:'+15% metal.',mods:{metal:1.15}},
+    {id:'plan',name:'Planned',desc:'+15% crystal.',mods:{crystal:1.15}},
+    {id:'green',name:'Green',desc:'+20% aether.',mods:{aether:1.20}},
+  ],
+  Values:[
+    {id:'might',name:'Might',desc:'+10% ship HP.',mods:{hp:1.10}},
+    {id:'know',name:'Knowledge',desc:'+10% research.',mods:{research:1.10}},
+    {id:'harm',name:'Harmony',desc:'+15% growth.',mods:{growth:1.15}},
+  ]
+};
+const STARTING_RES={metal:220, crystal:120, aether:80};
+
+/* ====== Game ====== */
+let game=null, CONFIG={ais:2, stars:52, turnLen:12, species:'human'};
+const EMPIRE_NAMES=["Aurora Union","Violet Synod","Glacier Combine","Nomad Array","Crown Compact"];
+
+function newGame(){
+  const stars=genGalaxy(CONFIG.stars, 2400,1600);
+  // Build empires: player + AIs
+  const empires=[];
+  const playerSpec=SPECIES.find(s=>s.id===CONFIG.species)||SPECIES[0];
+  empires.push(makeEmpire(0,"Player",playerSpec));
+  for(let i=0;i<CONFIG.ais;i++){
+    const sp=pick(SPECIES);
+    empires.push(makeEmpire(i+1, EMPIRE_NAMES[(i+1)%EMPIRE_NAMES.length], sp));
+  }
+  const idxs=farApartIndices(stars, empires.length);
+  idxs.forEach((id,empIndex)=>seedStart(stars[id], empires[empIndex]));
+  return {
+    world:{w:2600*DPR,h:1800*DPR}, stars, empires, routes:buildHyperlanes(stars),
+    selected:null, hover:null, selShip:null, victory:null,
+    aetherPhase:rand(6.28), lastEconomy:0, msgLog:[], tick:0,
+    turnLen:CONFIG.turnLen, turnNumber:1
+  };
+}
+function makeEmpire(id,name,species){
+  const color=species.color;
+  const emp= {id,name:name||EMPIRE_NAMES[id]||("Empire "+id), species:species.name, color,
+    res:{...STARTING_RES}, research:0, researchRate:1, techs:new Set(),
+    policies:{Government:null,Economy:null,Values:null},
+    ships:[], range:240, dmgMul:1,hpMul:1,prodMul:1,growthMul:1,resMul:{metal:1,crystal:1,aether:1}, speedMul:1,
+    abilityCooldown:0, targetTech:null};
+  // species perks
+  if(species.perks.range) emp.range*=species.perks.range;
+  if(species.perks.research) emp.researchRate*=species.perks.research;
+  if(species.perks.hp) emp.hpMul*=species.perks.hp;
+  if(species.perks.prod) emp.prodMul*=species.perks.prod;
+  if(species.perks.growth) emp.growthMul*=species.perks.growth;
+  if(species.perks.speed) emp.speedMul*=species.perks.speed;
+  return emp;
+}
+
+/* ====== Galaxy ====== */
+function nameStar(){const A=["Astra","Vega","Nadir","Lyra","Erebus","Kara","Zeno","Nyx","Iona","Rhea","Juno","Krios","Cyra","Aether","Nysa","Eon","Seris","Altis","Polaris","Mira","Aelia","Kora","Talos","Vireo","Arka"]; const B=["Prime","Minor","Secundus","III","IV","V","VI","Belt","Reach","Gate","Haven","Rise","Crown","Drift","Chord","Spur","Cradle","Shore"]; return pick(A)+" "+pick(B);}
+function genGalaxy(n,w,h){
+  const stars=[]; const margin=140;
+  for(let i=0;i<n;i++){
+    const x=randi(margin,w-margin), y=randi(margin,h-margin);
+    stars.push({id:i,x:x*DPR,y:y*DPR,name:nameStar(),owner:null,pop:0,prod:0,research:0,
+      metal:randi(30,120),crystal:randi(10,80),aether:randi(5,60),stock:{metal:0,crystal:0,aether:0},
+      growth:randi(6,12),garrison:[],buildQueue:[],projects:{gate:false,gateProg:0},
+      surgeTimer:0,surgeCooldown:0, focus:'balanced',
+      localPolicies:{Government:null,Economy:null,Values:null,enabled:false}});
+  }
+  return stars;
+}
+function farApartIndices(stars,k){
+  const picks=[]; let pool=[...stars.keys()];
+  picks.push(pool.splice((Math.random()*pool.length)|0,1)[0]);
+  while(picks.length<k){
+    let best=-1,bestIdx=-1;
+    for(const idx of pool){let dmin=1e9; for(const p of picks){dmin=Math.min(dmin,dist(stars[idx],stars[p]));}
+      if(dmin>best){best=dmin;bestIdx=idx;}}
+    picks.push(bestIdx); pool=pool.filter(i=>i!==bestIdx);
+  } return picks;
+}
+function seedStart(star,emp){
+  star.owner=emp.id; star.pop=22; star.prod=12; star.research=7;
+  star.stock={metal:60,crystal:30,aether:12};
+  const s=makeShip('Scout',emp,star), c=makeShip('Colony',emp,star);
+  star.garrison.push(s,c); emp.ships.push(s,c);
+}
+function buildHyperlanes(stars){
+  const K=4, routes=new Map();
+  for(const s of stars){
+    const ds=stars.filter(o=>o!==s).map(o=>({o,d:dist(s,o)})).sort((a,b)=>a.d-b.d).slice(0,K);
+    routes.set(s.id, ds.map(x=>x.o.id));
+  }
+  return routes;
+}
+function makeShip(type,emp,star){const spec=SHIPS[type];return {id:Math.random().toString(36).slice(2),owner:emp.id,type,hp:spec.hp*(emp.hpMul||1),x:star.x,y:star.y,at:star.id,to:null,from:star.id,progress:0,cooldown:0};}
+
+/* ====== Policies/Tech ====== */
+function applyPolicyMods(emp){
+  emp.dmgMul=1; emp.hpMul=1; emp.prodMul=1; emp.growthMul=1; emp.resMul={metal:1,crystal:1,aether:1}; emp.researchRate=1;
+  const P=emp.policies;
+  const mods=[P.Government?.mods,P.Economy?.mods,P.Values?.mods].filter(Boolean);
+  for(const m of mods){
+    if(m.dmg) emp.dmgMul*=m.dmg;
+    if(m.hp) emp.hpMul*=m.hp;
+    if(m.prod) emp.prodMul*=m.prod;
+    if(m.growth) emp.growthMul*=m.growth;
+    if(m.research) emp.researchRate*=m.research;
+    if(m.metal) emp.resMul.metal*=m.metal;
+    if(m.crystal) emp.resMul.crystal*=m.crystal;
+    if(m.aether) emp.resMul.aether*=m.aether;
+  }
+}
+function queueResearch(state,emp,id){emp.targetTech=TECHS.find(t=>t.id===id)||null;}
+function completeTech(emp,tech){
+  emp.techs.add(tech.id);
+  if(tech.id==='warp')emp.range*=1.2;
+  if(tech.id==='lasers')emp.dmgMul*=1.2;
+  if(tech.id==='shields')emp.hpMul*=1.25;
+  if(tech.id==='robots')emp.prodMul*=1.2;
+  if(tech.id==='bio')emp.growthMul*=1.2;
+}
+
+/* ====== Economy / Build / Combat ====== */
+function canAfford(emp,c){for(const k in c){if((emp.res[k]||0)<c[k])return false;}return true;}
+function pay(emp,c){for(const k in c){emp.res[k]-=c[k];}}
+function enqueueBuild(star,type,emp){star.buildQueue.push({type,progress:0,paid:false}); pushMsg(game,`Queued ${type} at ${star.name}.`);}
+
+function econTick(state){ // one "second" of sim
+  state.aetherPhase+=0.015;
+  for(const emp of state.empires){
+    applyPolicyMods(emp);
+    let empireResearch=0;
+    const myStars=state.stars.filter(st=>st.owner===emp.id);
+    for(const st of myStars){
+      // Focus multipliers
+      const f=st.focus, fprod = f==='prod'?1.25:f==='res'?0.9:1, fres = f==='res'?1.25:f==='prod'?0.9:1, fgrowth=f==='grow'?1.25:1;
+      const curr=1+0.2*Math.sin((st.x/DPR+st.y/DPR)/240+state.aetherPhase);
+      const prod=Math.max(1,Math.floor(st.prod*fprod*(st.surgeTimer>0?1.6:1)*emp.prodMul*curr));
+      const growth=Math.max(1,Math.floor(st.growth*fgrowth*emp.growthMul*(0.8+0.4*Math.sin(state.aetherPhase+st.id))));
+      const research=Math.max(0,Math.floor(st.research*fres*emp.researchRate*(st.surgeTimer>0?1.4:1)));
+      st.stock.metal   += Math.floor(prod*(st.metal/100)*emp.resMul.metal);
+      st.stock.crystal += Math.floor(prod*(st.crystal/100)*emp.resMul.crystal);
+      st.stock.aether  += Math.floor(growth*(st.aether/100)*emp.resMul.aether);
+      empireResearch += research;
+
+      // Builds
+      if(st.buildQueue.length){
+        const job=st.buildQueue[0], spec=SHIPS[job.type];
+        if(!job.paid){ if(canAfford(emp,spec.cost)){pay(emp,spec.cost); job.paid=true;} }
+        if(job.paid){
+          job.progress+=(st.surgeTimer>0?1.65:1)*(1+st.prod/50);
+          if(job.progress>=spec.build){
+            const ship=makeShip(job.type,emp,st); st.garrison.push(ship); emp.ships.push(ship); st.buildQueue.shift();
+            if(job.type==='Colony') pushMsg(state,`A ${job.type} is ready at ${st.name}.`);
+          }
+        }
+      }
+
+      // Gate
+      if(st.projects.gate){ st.projects.gateProg+=(st.surgeTimer>0?2:1); if(st.projects.gateProg>=200) state.victory={type:'Science',winner:emp}; }
+      if(st.surgeTimer>0) st.surgeTimer--; if(st.surgeCooldown>0) st.surgeCooldown--;
+
+      resolveStarCombat(state,st);
+    }
+    if(emp.targetTech){ emp.research+=empireResearch; if(emp.research>=emp.targetTech.cost){ emp.research-=emp.targetTech.cost; completeTech(emp,emp.targetTech); emp.targetTech=null; } }
+    else emp.research+=empireResearch*0.25;
+    if(emp.abilityCooldown>0)emp.abilityCooldown--;
+  }
+
+  // Travel
+  for(const emp of state.empires){
+    for(const sh of emp.ships){
+      if(sh.at===null && sh.to!=null){
+        const speed=SHIPS[sh.type].spd*(emp.speedMul||1);
+        sh.progress+=0.012*(speed/80);
+        if(sh.progress>=1){
+          const dst=state.stars.find(s=>s.id===sh.to);
+          sh.x=dst.x; sh.y=dst.y; sh.at=dst.id; sh.to=null; sh.progress=0; dst.garrison.push(sh);
+          if(dst.owner===null && sh.type==='Colony'){ dst.owner=emp.id; dst.pop=20; dst.prod=10; dst.research=6; pushMsg(state,`Founded a colony at ${dst.name}.`); }
+        } else { const a=state.stars.find(s=>s.id===sh.from), b=state.stars.find(s=>s.id===sh.to); sh.x=lerp(a.x,b.x,sh.progress); sh.y=lerp(a.y,b.y,sh.progress); }
+      }
+    }
+  }
+}
+function resolveStarCombat(state,star){
+  const sides=new Map();
+  for(const sh of star.garrison){
+    const k=sh.owner; if(!sides.has(k)) sides.set(k,[]);
+    sides.get(k).push(sh);
+  }
+  if(sides.size<=1) return;
+  const owners=[...sides.keys()];
+  for(const o of owners){
+    for(const sh of sides.get(o)){
+      sh.cooldown=Math.max(0,sh.cooldown-1);
+      if(sh.cooldown<=0){
+        const foeOwner=pick(owners.filter(x=>x!==o));
+        const foe=pick(sides.get(foeOwner));
+        const emp=state.empires[o]; const spec=SHIPS[sh.type];
+        foe.hp -= spec.dmg * (emp?.dmgMul||1);
+        sh.cooldown=Math.max(1,Math.floor(60/spec.rof));
+      }
+    }
+  }
+  star.garrison=star.garrison.filter(s=>s.hp>0);
+  for(const emp of state.empires){ emp.ships=emp.ships.filter(s=>s.hp>0); }
+  const newSides=new Set(star.garrison.map(s=>s.owner)); if(newSides.size===1){ star.owner=[...newSides][0]; }
+}
+
+/* ====== AI (turn orders) ====== */
+function aiIssueOrders(state,emp){
+  if(state.victory) return;
+  const my=state.stars.filter(s=>s.owner===emp.id); if(!my.length) return;
+
+  if(Math.random()<0.6 && !emp.targetTech){
+    const avail=TECHS.filter(t=>!emp.techs.has(t.id)); if(avail.length) queueResearch(state,emp,avail.sort((a,b)=>a.cost-b.cost)[0].id);
+  }
+  if(!emp.policies.Government) emp.policies.Government=POLICIES.Government[randi(0,2)];
+  if(!emp.policies.Economy) emp.policies.Economy=POLICIES.Economy[randi(0,2)];
+  if(!emp.policies.Values) emp.policies.Values=POLICIES.Values[randi(0,2)];
+  applyPolicyMods(emp);
+
+  for(const s of my){
+    if(s.buildQueue.length>2) continue;
+    if(emp.res.metal>150 && emp.res.crystal>40) enqueueBuild(s,'Frigate',emp);
+    else if(emp.res.metal>100) enqueueBuild(s,'Scout',emp);
+    if(!s.garrison.some(x=>x.type==='Colony') && emp.res.metal>90 && emp.res.crystal>25) enqueueBuild(s,'Colony',emp);
+  }
+  const neutral=state.stars.filter(s=>s.owner===null).sort((a,b)=>(a.metal+a.crystal+a.aether)-(b.metal+b.crystal+b.aether))[0];
+  if(neutral){ for(const s of my){ for(const ship of s.garrison){ if((ship.type==='Scout'||ship.type==='Colony') && Math.random()<0.35) trySend(state,ship,neutral.id); } } }
+  else{
+    const foes=state.stars.filter(s=>s.owner!=null && s.owner!==emp.id);
+    if(foes.length){ const t=foes.sort((a,b)=>dist(my[0],a)-dist(my[0],b))[0];
+      for(const s of my){ for(const ship of s.garrison){ if(ship.type==='Frigate' && Math.random()<0.25) trySend(state,ship,t.id); } }
+    }
+  }
+}
+
+/* ====== Orders ====== */
+function trySend(state,ship,dstId){
+  const from=state.stars.find(s=>s.id===ship.at), dst=state.stars.find(s=>s.id===dstId), emp=state.empires[ship.owner];
+  if(!from||!dst) return; const d=dist(from,dst)/DPR; if(d>emp.range){ pushMsg(state,'Destination out of range.'); return; }
+  const arr=from.garrison; const i=arr.indexOf(ship); if(i>=0) arr.splice(i,1);
+  ship.from=from.id; ship.at=null; ship.to=dst.id; ship.progress=0; pushMsg(state,`En-route to ${dst.name}.`);
+}
+
+/* ====== Messages ====== */
+function pushMsg(state,msg){state.msgLog.unshift({msg,t:Date.now()}); if(state.msgLog.length>6) state.msgLog.length=6;}
+
+/* ====== Input: hover/select/move/zoom/pan ====== */
+let mouse={x:0,y:0,world:{x:0,y:0}}, dragging=false, dragPrev=null;
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect(); mouse.x=(e.clientX-r.left)*DPR; mouse.y=(e.clientY-r.top)*DPR; mouse.world=screenToWorld(mouse.x,mouse.y);
+  if(dragging && dragPrev){ const dx=(mouse.x-dragPrev.x)/camera.z, dy=(mouse.y-dragPrev.y)/camera.z; camera.x -= dx/DPR; camera.y -= dy/DPR; dragPrev={x:mouse.x,y:mouse.y}; }
+  if(!game) return; game.hover = nearestStar(mouse.world, 12*DPR);
+});
+canvas.addEventListener('mousedown',e=>{ if(e.button===2){ dragging=true; dragPrev={x:mouse.x,y:mouse.y}; }});
+canvas.addEventListener('mouseup',e=>{ if(e.button===2){ dragging=false; dragPrev=null; }});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('wheel',e=>{
+  const prev=screenToWorld(mouse.x,mouse.y);
+  camera.z=clamp(camera.z*(e.deltaY>0?0.9:1.1),0.55,2.2);
+  const post=screenToWorld(mouse.x,mouse.y);
+  camera.x += (post.x-prev.x)/DPR; camera.y += (post.y-prev.y)/DPR;
+});
+function nearestStar(pt,rad){ if(!game) return null; for(const s of game.stars){ const dx=s.x-pt.x, dy=s.y-pt.y; if(dx*dx+dy*dy < (rad*rad)) return s; } return null; }
+canvas.addEventListener('click',()=>{
+  if(!game) return; const hv=game.hover;
+  if(hv){ if(game.selShip){ trySend(game,game.selShip,hv.id); game.selShip=null; } else game.selected=hv; }
+  else { game.selected=null; game.selShip=null; }
+});
+
+/* ====== Global keys ====== */
+addEventListener('keydown',e=>{
+  if(!game) return;
+  if(e.key==='r'||e.key==='R') openResearch();
+  if(e.key==='p'||e.key==='P') openPolicies();
+  if(e.key==='e'||e.key==='E') endTurn();
+  if(e.key==='0') resetCam();
+});
+
+/* ====== UI Bars + Delegated Clicks ====== */
+const leftBar=document.getElementById('leftBar'), rightBar=document.getElementById('rightBar'), bottomBar=document.getElementById('bottomBar');
+function niceNum(n){if(n>=1e6)return(n/1e6).toFixed(1)+"M"; if(n>=1e3)return(n/1e3).toFixed(1)+"k"; return Math.floor(n);}
+function renderBars(){
+  if(!game) return;
+  const me=game.empires[0];
+  leftBar.innerHTML=`
+    <div><b>${me.name}</b> — <span style="opacity:.8">${me.species}</span></div>
+    <div class="tiny row">
+      <span class="chip">Metal ${niceNum(me.res.metal)}</span>
+      <span class="chip">Crystal ${niceNum(me.res.crystal)}</span>
+      <span class="chip">Aether ${niceNum(me.res.aether)}</span>
+      <span class="chip">Research ${niceNum(me.research)}${me.targetTech?` / ${me.targetTech.name}`:''}</span>
+      <span class="chip">Range ${Math.floor(me.range)}</span>
+      <span class="chip">Turn #${game.turnNumber}</span>
+    </div>
+    <div class="tiny">Policies: ${(me.policies.Government?.name)||'—'}, ${(me.policies.Economy?.name)||'—'}, ${(me.policies.Values?.name)||'—'}</div>
+    <div class="tiny" style="margin-top:8px">${game.msgLog.map(m=>'• '+m.msg).join('<br>')}</div>
+  `;
+  const s=game.selected;
+  if(s){
+    const owner=s.owner==null?'Neutral':game.empires[s.owner].name;
+    rightBar.innerHTML=`
+      <div><b>${s.name}</b></div>
+      <div class="tiny" style="opacity:.85">${owner}${s.projects.gate?` • Gate ${Math.floor(s.projects.gateProg/2)}%`:''}</div>
+      <div class="tiny" style="margin-top:6px">Pop:${s.pop} • Prod:${s.prod} • Res:${s.research} • Focus:${s.focus}</div>
+      <div class="tiny row"><span class="chip">M ${s.metal}</span><span class="chip">C ${s.crystal}</span><span class="chip">Ae ${s.aether}</span></div>
+      <div class="tiny row"><span class="chip">Store M ${niceNum(s.stock.metal)}</span><span class="chip">C ${niceNum(s.stock.crystal)}</span><span class="chip">Ae ${niceNum(s.stock.aether)}</span></div>
+      <div class="tiny" style="margin-top:6px;opacity:.85">Garrison: ${s.garrison.length? s.garrison.map(g=>g.type[0]).join(' '):'—'}</div>
+    `;
+  } else rightBar.innerHTML=`<div><b>Galaxy</b></div><div class="tiny" style="opacity:.8">Select a star to inspect/manage.</div>`;
+
+  const s2=game.selected;
+  let html='';
+  if(s2 && s2.owner===0){
+    html += `<button class="act" data-action="manage">Manage</button>
+             <span class="tiny">Select ship:</span>
+             <button class="act" data-action="selShip" data-ship="Scout">Scout</button>
+             <button class="act" data-action="selShip" data-ship="Colony">Colony</button>
+             <button class="act" data-action="selShip" data-ship="Frigate">Frigate</button>`;
+  }else{
+    html += `<span class="tiny">Global:</span>`;
+  }
+  html += ` <button class="act" data-action="research">Research</button>
+            <button class="act" data-action="policies">Policies</button>
+            <button class="act" data-action="endTurn">End Turn</button>
+            <button class="act" data-action="help">Help</button>`;
+  bottomBar.innerHTML=html;
+}
+bottomBar.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const a=b.dataset.action;
+  if(a==='manage'){ openColony(game.selected); }
+  else if(a==='selShip'){ selectShip(game.selected, b.dataset.ship); }
+  else if(a==='research'){ openResearch(); }
+  else if(a==='policies'){ openPolicies(); }
+  else if(a==='endTurn'){ endTurn(); }
+  else if(a==='help'){ toggleHelp(true); }
+});
+function selectShip(star,type){ const ship=star.garrison.find(g=>g.type===type); if(!ship){pushMsg(game,`No ${type} at ${star.name}.`);return;} game.selShip=ship; pushMsg(game,`Selected ${type}. Click a destination in range.`); }
+
+/* ====== Overlays ====== */
+const startOverlay=document.getElementById('startOverlay'), helpOverlay=document.getElementById('helpOverlay');
+document.getElementById('startBtn').onclick=()=>{
+  const aiCount=+document.getElementById('aiCount').value;
+  const stars=+document.getElementById('mapSize').value;
+  const turnLen=+document.getElementById('turnLen').value;
+  CONFIG={ais:aiCount, stars, turnLen, species:SELECTED_SPECIES||'human'};
+  start(); startOverlay.style.display='none';
+};
+document.getElementById('howBtn').onclick=()=>toggleHelp(true);
+document.getElementById('closeHelp').onclick=()=>toggleHelp(false);
+function toggleHelp(on){helpOverlay.style.display=on?'flex':'none';}
+
+/* Species buttons on setup */
+let SELECTED_SPECIES='human';
+(function buildSpeciesPick(){
+  const row=document.getElementById('speciesRow');
+  SPECIES.forEach(s=>{
+    const d=document.createElement('div'); d.className='radio'+(s.id==='human'?' sel':''); d.style.minWidth='180px';
+    d.textContent=`${s.name} — ${s.desc}`; d.style.borderColor='#2a3a6a';
+    d.onclick=()=>{SELECTED_SPECIES=s.id; [...row.children].forEach(n=>n.classList.remove('sel')); d.classList.add('sel');};
+    row.appendChild(d);
+  });
+})();
+
+/* ====== Research & Policies ====== */
+function openResearch(){
+  const me=game.empires[0]; const box=document.createElement('div'); box.className='overlay';
+  box.innerHTML=`<div class="card"><h3 class="title">Research</h3>
+    <div class="sub">Pick a tech to focus (✓ owned, → focused).</div>
+    <div class="list" id="rl"></div>
+    <div class="row"><button class="btn" id="close">Close</button></div></div>`;
+  document.getElementById('uiRoot').appendChild(box);
+  const rl=box.querySelector('#rl');
+  TECHS.forEach(t=>{
+    const owned=me.techs.has(t.id), focused=(me.targetTech?.id===t.id);
+    const line=document.createElement('div'); line.className='slot';
+    line.innerHTML=`<div style="min-width:240px"><b>${owned?'✓ ':focused?'→ ':''}${t.name}</b><div class="tiny" style="opacity:.8">${t.desc}</div></div><div class="tiny chip">${t.cost} rp</div>`;
+    if(!owned){ const btn=document.createElement('button'); btn.className='btn'; btn.textContent='Focus'; btn.onclick=()=>{queueResearch(game,me,t.id); renderBars();}; line.appendChild(btn);}
+    rl.appendChild(line);
+  });
+  box.querySelector('#close').onclick=()=>box.remove();
+}
+function openPolicies(){
+  const me=game.empires[0]; const box=document.createElement('div'); box.className='overlay';
+  box.innerHTML=`<div class="card"><h3 class="title">Global Policies</h3><div id="pol"></div><div class="row"><button class="btn" id="close">Close</button></div></div>`;
+  document.getElementById('uiRoot').appendChild(box);
+  const wr=box.querySelector('#pol');
+  function drawCat(cat,opts){
+    const row=document.createElement('div'); row.style.margin='8px 0';
+    const t=document.createElement('div'); t.innerHTML=`<b>${cat}</b> — <span class="tiny" style="opacity:.8">${me.policies[cat]?.name||'—'}</span>`; row.appendChild(t);
+    const line=document.createElement('div'); line.className='row';
+    opts.forEach(p=>{
+      const r=document.createElement('div'); r.className='radio'+(me.policies[cat]?.id===p.id?' sel':''); r.textContent=p.name; r.title=p.desc;
+      r.onclick=()=>{ me.policies[cat]=p; applyPolicyMods(me); [...line.children].forEach(n=>n.classList.remove('sel')); r.classList.add('sel'); renderBars(); };
+      line.appendChild(r);
+    });
+    row.appendChild(line); wr.appendChild(row);
+  }
+  drawCat('Government',POLICIES.Government);
+  drawCat('Economy',POLICIES.Economy);
+  drawCat('Values',POLICIES.Values);
+  box.querySelector('#close').onclick=()=>box.remove();
+}
+
+/* ====== Colony Panel ====== */
+function openColony(star){
+  const me=game.empires[0]; const box=document.createElement('div'); box.className='overlay';
+  box.innerHTML=`<div class="card"><h3 class="title">${star.name} — Colony</h3>
+  <div class="tiny">Pop:${star.pop} • Prod:${star.prod} • Res:${star.research} • Stores: M ${niceNum(star.stock.metal)} • C ${niceNum(star.stock.crystal)} • Ae ${niceNum(star.stock.aether)}</div>
+  <div class="row">
+    <button class="btn" data-b="Scout">Build Scout</button>
+    <button class="btn" data-b="Colony">Build Colony</button>
+    <button class="btn" data-b="Frigate">Build Frigate</button>
+    ${me.techs.has('ascend') && !star.projects.gate ? '<button class="btn" id="bGate">Start Ascension Gate</button>' : ''}
+  </div>
+  <div class="row"><b>Focus</b>
+    <div class="radio ${star.focus==='balanced'?'sel':''}" data-f="balanced">Balanced</div>
+    <div class="radio ${star.focus==='prod'?'sel':''}" data-f="prod">Production</div>
+    <div class="radio ${star.focus==='res'?'sel':''}" data-f="res">Research</div>
+    <div class="radio ${star.focus==='grow'?'sel':''}" data-f="grow">Growth</div>
+  </div>
+  <div><b>Queue</b><div class="list" id="q"></div></div>
+  <div style="margin-top:10px"><b>Local Policy Overrides</b> <span class="tiny" style="opacity:.8">(small bonus, per-colony)</span>
+    <div class="row"><label class="radio" id="locToggle">${star.localPolicies.enabled?'On':'Off'}</label></div>
+    <div id="locPol"></div>
+  </div>
+  <div class="row"><button class="btn" id="close">Close</button></div></div>`;
+  document.getElementById('uiRoot').appendChild(box);
+
+  function refreshQ(){
+    const q=box.querySelector('#q'); q.innerHTML='';
+    if(!star.buildQueue.length){ const d=document.createElement('div'); d.className='tiny'; d.style.opacity=.8; d.textContent='(empty)'; q.appendChild(d); }
+    star.buildQueue.forEach((j,idx)=>{
+      const line=document.createElement('div'); line.className='slot';
+      line.innerHTML=`<div style="min-width:140px"><b>${j.type}</b> — ${Math.floor((j.progress/SHIPS[j.type].build)*100)}%</div>`;
+      const del=document.createElement('button'); del.className='btn'; del.textContent='Cancel';
+      del.onclick=()=>{ star.buildQueue.splice(idx,1); refreshQ(); };
+      line.appendChild(del); q.appendChild(line);
+    });
+  }
+  box.querySelectorAll('[data-b]').forEach(btn=>{
+    btn.addEventListener('click',()=>{ enqueueBuild(star,btn.dataset.b,me); refreshQ(); renderBars(); });
+  });
+  const gateBtn=box.querySelector('#bGate');
+  if(gateBtn) gateBtn.onclick=()=>{ const cost={metal:600,crystal:260,aether:220}; if(canAfford(me,cost)){pay(me,cost); star.projects.gate=true; pushMsg(game,`Ascension Gate started at ${star.name}.`);} else pushMsg(game,'Not enough resources.'); renderBars();};
+
+  // focus
+  box.querySelectorAll('[data-f]').forEach(r=>{
+    r.addEventListener('click',()=>{ star.focus=r.dataset.f; box.querySelectorAll('[data-f]').forEach(n=>n.classList.remove('sel')); r.classList.add('sel'); renderBars(); });
+  });
+
+  function drawLocal(){
+    const wr=box.querySelector('#locPol'); wr.innerHTML='';
+    if(!star.localPolicies.enabled){ wr.innerHTML='<div class="tiny" style="opacity:.8">(disabled)</div>'; return; }
+    function row(cat,opts){
+      const r=document.createElement('div'); r.style.margin='6px 0';
+      const t=document.createElement('div'); t.innerHTML=`<b>${cat}</b> — <span class="tiny" style="opacity:.8">${star.localPolicies[cat]?.name||'—'}</span>`; r.appendChild(t);
+      const line=document.createElement('div'); line.className='row';
+      opts.forEach(p=>{
+        const b=document.createElement('div'); b.className='radio'+(star.localPolicies[cat]?.id===p.id?' sel':''); b.textContent=p.name; b.title=p.desc;
+        b.onclick=()=>{ star.localPolicies[cat]=p; drawLocal(); };
+        line.appendChild(b);
+      });
+      r.appendChild(line); wr.appendChild(r);
+    }
+    row('Government',POLICIES.Government); row('Economy',POLICIES.Economy); row('Values',POLICIES.Values);
+  }
+  box.querySelector('#locToggle').onclick=()=>{ star.localPolicies.enabled=!star.localPolicies.enabled; box.querySelector('#locToggle').textContent=star.localPolicies.enabled?'On':'Off'; drawLocal(); };
+  drawLocal(); refreshQ();
+  box.querySelector('#close').onclick=()=>box.remove();
+}
+
+/* ====== Turn flow ====== */
+function endTurn(){
+  if(!game) return;
+  // Everyone issues orders (AI), then we simulate for turnLen ticks
+  for(let i=1;i<game.empires.length;i++) aiIssueOrders(game, game.empires[i]); // AIs plan
+  for(let i=0;i<game.turnLen;i++) econTick(game);
+  game.turnNumber++;
+  renderBars(); draw();
+}
+
+/* ====== Drawing ====== */
+let starfield=Array.from({length:280},()=>({x:rand(1)*1e4,y:rand(1)*1e4,z:0.3+rand(0.9)}));
+function drawBackdrop(){
+  ctx.save(); ctx.globalAlpha=0.85;
+  for(const s of starfield){
+    const px=((s.x - camera.x*40*s.z)%(W*2)+W*2)%(W*2);
+    const py=((s.y - camera.y*40*s.z)%(H*2)+H*2)%(H*2);
+    ctx.fillStyle= s.z>0.7? '#9fd4ff' : (s.z>0.5? '#ffd6f6' : '#c4e2ff');
+    ctx.fillRect(px-1,py-1,2,2);
+  }
+  ctx.globalCompositeOperation='screen';
+  for(let i=0;i<3;i++){
+    ctx.beginPath();
+    const amp=(18+i*8)*DPR, yy=(H*0.25 + i*H*0.22);
+    for(let x=0;x<=W;x+=6*DPR){
+      const y = yy + Math.sin((x/DPR)/110 + (game?.aetherPhase||0) + i)*amp;
+      if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.lineWidth=2.6*DPR; ctx.strokeStyle=i%2===0?'rgba(127,255,212,0.18)':'rgba(255,156,246,0.13)';
+    ctx.shadowBlur=18*DPR; ctx.shadowColor=ctx.strokeStyle; ctx.stroke();
+  }
+  ctx.restore();
+}
+function applyCamera(){ ctx.translate(W/2,H/2); ctx.scale(camera.z,camera.z); ctx.translate(-camera.x*DPR,-camera.y*DPR); }
+function drawHyperlanes(){
+  if(!game) return; ctx.save(); applyCamera();
+  ctx.lineWidth=0.9*DPR; ctx.strokeStyle='rgba(120,150,220,0.16)';
+  for(const s of game.stars){ const adj=game.routes.get(s.id)||[]; for(const j of adj){ const o=game.stars[j]; ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(o.x,o.y); ctx.stroke(); } }
+  ctx.restore();
+}
+function drawStars(){
+  if(!game) return; ctx.save(); applyCamera();
+  for(const s of game.stars){
+    const col = s.owner==null?COLORS.neutral: game.empires[s.owner].color;
+    ctx.beginPath(); ctx.arc(s.x,s.y,10*DPR,0,Math.PI*2); ctx.fillStyle=col; ctx.globalAlpha=0.10; ctx.fill(); ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(s.x,s.y,5.5*DPR,0,Math.PI*2); ctx.fillStyle=col; ctx.shadowBlur=14*DPR; ctx.shadowColor=col; ctx.fill(); ctx.shadowBlur=0;
+    ctx.beginPath(); ctx.arc(s.x,s.y,9*DPR,0,Math.PI*2); ctx.lineWidth=1.2*DPR; ctx.strokeStyle=s.owner==null?'rgba(180,190,220,0.35)':col; ctx.stroke();
+    ctx.font=(12*DPR)+'px system-ui'; ctx.fillStyle='rgba(220,235,255,0.9)'; ctx.fillText(s.name, s.x+10*DPR, s.y-8*DPR);
+  }
+  ctx.restore();
+}
+function drawSelections(){
+  if(!game) return; ctx.save(); applyCamera();
+  const sel=game.selected, hov=game.hover;
+  if(hov){ ctx.beginPath(); ctx.arc(hov.x,hov.y,13*DPR,0,Math.PI*2); ctx.lineWidth=2*DPR; ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.stroke(); }
+  if(sel){
+    ctx.beginPath(); ctx.arc(sel.x,sel.y,16*DPR,0,Math.PI*2); ctx.lineWidth=2.2*DPR; ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.stroke();
+    const me=game.empires[0]; ctx.beginPath(); ctx.arc(sel.x,sel.y,me.range*DPR,0,Math.PI*2); ctx.lineWidth=0.9*DPR; ctx.strokeStyle='rgba(127,255,212,0.15)'; ctx.stroke();
+    for(const s of game.stars){ const d=dist(sel,s)/DPR; if(d<=me.range){ ctx.beginPath(); ctx.arc(s.x,s.y,3*DPR,0,Math.PI*2); ctx.fillStyle='rgba(127,255,212,0.25)'; ctx.fill(); } }
+    let off=0; for(const g of sel.garrison){ const c=game.empires[g.owner].color; const x=sel.x+(off*8+14)*DPR, y=sel.y+10*DPR;
+      ctx.beginPath(); ctx.arc(x,y,3.5*DPR,0,Math.PI*2); ctx.fillStyle=c; ctx.fill();
+      ctx.font=(10*DPR)+'px system-ui'; ctx.fillStyle='#cfe8ff'; ctx.fillText(g.type[0], x+6*DPR, y+3*DPR); off++;
+    }
+  }
+  for(const emp of game.empires){ for(const sh of emp.ships){ if(sh.at===null && sh.to!=null){ ctx.beginPath(); ctx.arc(sh.x,sh.y,2.8*DPR,0,Math.PI*2); ctx.fillStyle=game.empires[sh.owner].color; ctx.fill(); } } }
+  ctx.restore();
+}
+function drawVictory(){ const v=game?.victory; if(!v) return; ctx.save(); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font=(28*DPR)+'px system-ui'; ctx.fillText(`${v.winner.name} achieved ${v.type} Victory`, W/2, H/2); ctx.font=(14*DPR)+'px system-ui'; ctx.fillText(`Reload to play again`, W/2, H/2+28*DPR); ctx.restore(); }
+function draw(){ ctx.clearRect(0,0,W,H); drawBackdrop(); drawHyperlanes(); drawStars(); drawSelections(); drawVictory(); }
+
+/* ====== Loop ====== */
+let last=now();
+function loop(){ requestAnimationFrame(loop); const t=now(), dt=(t-last)/1000; last=t; renderBars(); draw(); }
+
+/* ====== Boot ====== */
+function start(){ resetCam(); game=newGame(); pushMsg(game,'New galaxy initialized.'); }
+loop();
+
+/* ====== Help ====== */
+const helpOverlay=document.getElementById('helpOverlay');
+function toggleHelp(on){ helpOverlay.style.display=on?'flex':'none'; }
+
+/* ====== Start overlay wiring ====== */
+document.getElementById('closeHelp').onclick=()=>toggleHelp(false);
+document.getElementById('howBtn').onclick=()=>toggleHelp(true);
+
+})();
+</script>
+</body>
+</html>

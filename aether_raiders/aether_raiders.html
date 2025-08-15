@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aether Empires — 2D 4X/RTS Mini</title>
+<style>
+  :root {
+    --bg:#0b0f1a;
+    --fg:#e8f1ff;
+    --accent:#7fffd4;
+    --accent2:#ff9cf6;
+    --warn:#ff5d73;
+    --ok:#8cff82;
+    --panel:#12182a;
+    --panel2:#0e1424;
+    --glow: 0 0 12px rgba(127,255,212,0.55), 0 0 32px rgba(255,156,246,0.15);
+  }
+  html,body{margin:0;height:100%;background:radial-gradient(1200px 800px at 70% -10%, #1a2340 0%, #0a0e18 60%, #070a12 100%) fixed;color:var(--fg);font:14px/1.2 system-ui,Segoe UI,Roboto,Ubuntu,Arial;}
+  #uiRoot{position:fixed;inset:0;overflow:hidden;}
+  #game{position:absolute;inset:0;display:block;image-rendering:pixelated;}
+  .overlay{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,5,10,0.85);backdrop-filter: blur(2px);-webkit-backdrop-filter: blur(2px);
+  }
+  .card{
+    background:linear-gradient(180deg,var(--panel) 0%, var(--panel2) 100%);
+    border:1px solid #1f2a4d;border-radius:14px;box-shadow:var(--glow);padding:18px 18px 12px;max-width:820px
+  }
+  .title{font-size:22px;margin:0 0 6px 0;letter-spacing:.5px}
+  .sub{opacity:.85;margin:.2rem 0 .8rem}
+  .btn{display:inline-block;border:1px solid #2a3a6a;background:#0f1630;color:var(--fg);
+    padding:9px 14px;border-radius:10px;cursor:pointer;user-select:none;margin:6px 8px 0 0}
+  .btn:hover{background:#131d3e}
+  .btn:active{transform:translateY(1px)}
+  .bar{position:absolute;left:12px;top:10px;background:rgba(12,16,32,.55);border:1px solid #1c284f;border-radius:10px;padding:8px 12px;box-shadow:var(--glow)}
+  .barR{left:auto;right:12px}
+  .bottomBar{
+    position:absolute;left:12px;right:12px;bottom:10px;
+    background:rgba(12,16,32,.55);border:1px solid #1c284f;border-radius:12px;box-shadow:var(--glow);
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:8px 10px;min-height:58px
+  }
+  .chip{
+    border:1px solid #2a3a6a;background:#0f1630;color:var(--fg);padding:6px 10px;border-radius:999px;margin:4px 6px 0 0;font-size:12px
+  }
+  .act{
+    border:1px solid #2a3a6a;background:#131d3e;color:var(--fg);padding:8px 12px;border-radius:10px;cursor:pointer
+  }
+  .act:hover{background:#192558}
+  .label{opacity:.8;margin-right:6px}
+  .kbd{display:inline-block;border:1px solid #3b4b7f;padding:2px 6px;border-radius:6px;background:#0f1630;margin:0 4px}
+  .tiny{font-size:12px;opacity:.8}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="uiRoot">
+  <canvas id="game"></canvas>
+
+  <div id="titleOverlay" class="overlay">
+    <div class="card">
+      <h1 class="title">Aether Empires</h1>
+      <div class="sub">Expand among neon stars, shape society, and ascend — with a cheeky dash of RTS-style tempo plays.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:.5rem 0 0">
+        <button class="btn" id="startBtn">Start New Galaxy</button>
+        <button class="btn" id="howBtn">How to Play</button>
+      </div>
+      <div class="tiny" style="margin-top:.75rem">
+        Tips: <span class="kbd">Space</span> pause • <span class="kbd">R</span> research • <span class="kbd">P</span> policies • <span class="kbd">H</span> help
+      </div>
+    </div>
+  </div>
+
+  <div id="helpOverlay" class="overlay" style="display:none">
+    <div class="card">
+      <h2 class="title">Quick Guide</h2>
+      <div class="sub">
+        - Click a star to select. If you own it, use the bottom actions to build ships or start projects.<br>
+        - Click a destination star to send selected ships. Hyperlanes (faint lines) show reachable jumps.<br>
+        - Open <b>Research</b> (<span class="kbd">R</span>) and <b>Policies</b> (<span class="kbd">P</span>) for boosts and new techs.<br>
+        - Use <b>Chrono Surge</b> on a colony (cooldown) for a fast build/research burst.<br>
+        - Win by building the <b>Ascension Gate</b> (science) or conquering rivals (domination).
+      </div>
+      <div><button class="btn" id="closeHelp">Close</button></div>
+    </div>
+  </div>
+
+  <div class="bar" id="leftBar"></div>
+  <div class="bar barR" id="rightBar"></div>
+  <div class="bottomBar" id="bottomBar"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/*** ======= Utility ======= ***/
+const rand = (n=1)=>Math.random()*n;
+const randi=(a,b)=>Math.floor(a+Math.random()*(b-a+1));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const now=()=>performance.now();
+
+function pick(arr){return arr[(Math.random()*arr.length)|0];}
+function nameStar(){
+  const A=["Astra","Vega","Nadir","Lyra","Erebus","Kara","Zeno","Nyx","Iona","Rhea","Juno","Krios","Cyra","Aether","Nysa","Eon","Seris","Altis","Polaris","Mira","Aelia","Kora","Talos","Vireo","Arka"];
+  const B=["Prime","Minor","Secundus","III","IV","V","VI","Belt","Reach","Gate","Drift","Crown","Spur","Haven","Depths","Rise","Cradle","Bloom","Shore","Chord"];
+  return pick(A)+" "+pick(B);
+}
+
+function niceNum(n){
+  if (n>=1e6) return (n/1e6).toFixed(1)+"M";
+  if (n>=1e3) return (n/1e3).toFixed(1)+"k";
+  return Math.floor(n).toString();
+}
+
+/*** ======= Canvas / Scene ======= ***/
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+let W=0,H=0, t0=now();
+
+function resize(){
+  W = canvas.width = Math.floor(window.innerWidth*DPR);
+  H = canvas.height = Math.floor(window.innerHeight*DPR);
+  canvas.style.width = (W/DPR)+"px";
+  canvas.style.height = (H/DPR)+"px";
+}
+window.addEventListener('resize', resize);
+
+/*** ======= Game Data ======= ***/
+const COLORS = {
+  player: "#7fffd4",
+  ai1: "#ff9cf6",
+  ai2: "#8be3ff",
+  neutral: "#8aa0c0",
+  hostile: "#ff7a7a"
+};
+const EMPIRE_NAMES = ["Aurora Union","Violet Synod","Glacier Combine"];
+const RACES = ["Human","Optic Seraph","Glacial Myriad"];
+const STARTING = {metal:220, crystal:120, aether:80};
+const SHIPS = {
+  Scout:   {hp:18,  dmg:3,  rof:1.1, spd:90,  cost:{metal:40, crystal:10}, build:6, upkeep:0},
+  Colony:  {hp:40,  dmg:1,  rof:0.6, spd:65,  cost:{metal:90, crystal:25, aether:10}, build:12,upkeep:1},
+  Frigate: {hp:80,  dmg:8,  rof:0.9, spd:80,  cost:{metal:120, crystal:45}, build:14,upkeep:1}
+};
+const TECHS = [
+  {id:'warp', name:'Warp Drives I', desc:'+20% jump range.', cost:120},
+  {id:'lasers', name:'Coherent Lasers', desc:'+20% ship damage.', cost:150},
+  {id:'shields', name:'Phase Shields', desc:'+25% ship HP.', cost:180},
+  {id:'robots', name:'Assembly Drones', desc:'+20% colony production.', cost:160},
+  {id:'bio', name:'Bioforming', desc:'+20% colony growth.', cost:140},
+  {id:'ascend', name:'Ascension Theory', desc:'Unlocks Ascension Gate project.', cost:260}
+];
+const POLICIES = {
+  Government: [
+    {id:'dem', name:'Democracy', desc:'+15% research.', mods:{research:1.15}},
+    {id:'aut', name:'Autocracy', desc:'+15% ship dmg.', mods:{dmg:1.15}},
+    {id:'col', name:'Collective', desc:'+15% production.', mods:{prod:1.15}},
+  ],
+  Economy: [
+    {id:'free', name:'Free Market', desc:'+15% metal.', mods:{metal:1.15}},
+    {id:'plan', name:'Planned', desc:'+15% crystal.', mods:{crystal:1.15}},
+    {id:'green', name:'Green', desc:'+20% aether.', mods:{aether:1.20}},
+  ],
+  Values: [
+    {id:'might', name:'Might', desc:'+10% ship HP.', mods:{hp:1.10}},
+    {id:'know', name:'Knowledge', desc:'+10% research.', mods:{research:1.10}},
+    {id:'harm', name:'Harmony', desc:'+15% growth.', mods:{growth:1.15}},
+  ]
+};
+
+let game=null;
+
+function newGame(){
+  const stars = genGalaxy(40);
+  const empires = [
+    makeEmpire(0, COLORS.player),
+    makeEmpire(1, COLORS.ai1),
+    makeEmpire(2, COLORS.ai2),
+  ];
+  // Place starting stars far-ish apart
+  const idxs = farApartIndices(stars, 3);
+  idxs.forEach((i,emp)=> seedStart(stars[i], empires[emp]));
+  return {
+    stars, empires,
+    tick:0, paused:false, speed:1, selected:null, hover:null, selFleet:null,
+    aetherPhase:rand(6.28),
+    lastEconomy:0, // seconds accumulator
+    routes: buildHyperlanes(stars),
+    msgLog: [],
+    victory:null
+  };
+}
+
+function makeEmpire(id,color){
+  return {
+    id, name: EMPIRE_NAMES[id], race: RACES[id], color,
+    res:{...STARTING}, research:0, researchRate:1,
+    techs:new Set(), policies:{Government:null, Economy:null, Values:null},
+    ships:[], range:210, dmgMul:1, hpMul:1, prodMul:1, growthMul:1, resMul:{metal:1, crystal:1, aether:1}, upkeep:0,
+    abilityCooldown:0, // Chrono Surge
+  };
+}
+
+function genGalaxy(n){
+  const margin=120;
+  const stars=[];
+  for(let i=0;i<n;i++){
+    const x = randi(margin, Math.floor(W/DPR)-margin);
+    const y = randi(margin, Math.floor(H/DPR)-margin-90);
+    stars.push({
+      id:i, x:x*DPR, y:y*DPR, name:nameStar(),
+      owner:null, pop:0, prod:0, research:0,
+      garrison:[], // ships stationed
+      buildQueue:[], buildProg:0,
+      metal: randi(30,120), crystal:randi(10,80), aether:randi(5,60), // base richness
+      stock:{metal:0, crystal:0, aether:0},
+      growth:randi(6,12), // base growth per cycle
+      projects:{gate:false, gateProg:0},
+      surgeTimer:0, surgeCooldown:0
+    });
+  }
+  return stars;
+}
+
+function farApartIndices(stars,k){
+  // Greedy farthest selection
+  const picks=[];
+  let pool=[...stars.keys()];
+  picks.push(pool.splice((Math.random()*pool.length)|0,1)[0]);
+  while(picks.length<k){
+    let best=-1, bestIdx=-1;
+    for (const idx of pool){
+      let dmin=1e9;
+      for(const p of picks) dmin=Math.min(dmin, dist(stars[idx],stars[p]));
+      if (dmin>best){best=dmin; bestIdx=idx;}
+    }
+    picks.push(bestIdx);
+    pool = pool.filter(i=>i!==bestIdx);
+  }
+  return picks;
+}
+
+function seedStart(star, emp){
+  star.owner = emp.id;
+  star.pop = 22;
+  star.prod = 12;
+  star.research = 7;
+  star.stock.metal = 40;
+  star.stock.crystal = 20;
+  star.stock.aether = 10;
+  // Initial scout + colony
+  const scout = makeShip('Scout', emp, star);
+  const col = makeShip('Colony', emp, star);
+  star.garrison.push(scout, col);
+  emp.ships.push(scout, col);
+}
+
+function buildHyperlanes(stars){
+  // Simple nearest-k neighbors
+  const K=4;
+  const routes = new Map();
+  for(const s of stars){
+    const ds = stars
+      .filter(o=>o!==s)
+      .map(o=>({o,d:dist(s,o)}))
+      .sort((a,b)=>a.d-b.d)
+      .slice(0,K);
+    routes.set(s.id, ds.map(x=>x.o.id));
+  }
+  return routes;
+}
+
+function makeShip(type, emp, star){
+  const spec = SHIPS[type];
+  return {
+    id: Math.random().toString(36).slice(2),
+    owner: emp.id, type,
+    hp: spec.hp * (emp.hpMul||1),
+    x: star.x, y: star.y,
+    at: star.id, // at star id (if null -> en route)
+    to: null, // destination star id
+    progress:0, // 0..1 if traveling
+    cooldown:0 // combat fire cd
+  };
+}
+
+/*** ======= AI ======= ***/
+function aiStep(state, emp){
+  if (state.victory) return;
+  // very light AI: expand, then poke nearest rival
+  const myStars = state.stars.filter(s=>s.owner===emp.id);
+  if (!myStars.length) return;
+
+  // Research if idle: pick cheapest not owned
+  if (rand()<0.02){
+    const avail = TECHS.filter(t=>!emp.techs.has(t.id));
+    if (avail.length){
+      const t=avail.sort((a,b)=>a.cost-b.cost)[0];
+      queueResearch(state, emp, t.id);
+    }
+  }
+  // Set one policy if empty
+  if (!emp.policies.Government) emp.policies.Government = POLICIES.Government[ randi(0,2) ];
+  if (!emp.policies.Economy) emp.policies.Economy = POLICIES.Economy[ randi(0,2) ];
+  if (!emp.policies.Values) emp.policies.Values = POLICIES.Values[ randi(0,2) ];
+  applyPolicyMods(emp);
+
+  // Build ships if resources
+  for(const s of myStars){
+    if (s.buildQueue.length>2) continue;
+    if (emp.res.metal>150 && emp.res.crystal>40) enqueueBuild(s,'Frigate');
+    else if (emp.res.metal>100) enqueueBuild(s,'Scout');
+    if (!s.garrison.some(x=>x.type==='Colony') && emp.res.metal>90 && emp.res.crystal>25) enqueueBuild(s,'Colony');
+  }
+
+  // Move scouts/colony to nearest neutral
+  const neutral = state.stars.filter(s=>s.owner===null);
+  const targetN = neutral.sort((a,b)=> aPopScore(a)-aPopScore(b))[0];
+  function aPopScore(s){return (s.metal+s.crystal+s.aether)+randi(0,40);}
+  if (targetN){
+    for (const s of myStars){
+      for(const ship of s.garrison){
+        if ((ship.type==='Scout'||ship.type==='Colony') && rand()<0.3){
+          sendShip(state, ship, targetN.id);
+        }
+      }
+    }
+  } else {
+    // Attack nearest enemy star with some frigates
+    const enemies = state.stars.filter(s=>s.owner!=null && s.owner!==emp.id);
+    if (enemies.length){
+      const t = enemies.sort((a,b)=>dist(myStars[0],a)-dist(myStars[0],b))[0];
+      for (const s of myStars){
+        for(const ship of s.garrison){
+          if (ship.type==='Frigate' && rand()<0.2) sendShip(state, ship, t.id);
+        }
+      }
+    }
+  }
+
+  // Use ability if available and building
+  if (emp.abilityCooldown<=0){
+    const b = myStars.find(s=>s.buildQueue.length || s.projects.gate);
+    if (b){ triggerSurge(b, emp); }
+  }
+}
+
+/*** ======= Policies / Tech ======= ***/
+function applyPolicyMods(emp){
+  emp.dmgMul=1; emp.hpMul=1; emp.prodMul=1; emp.growthMul=1; emp.resMul={metal:1, crystal:1, aether:1};
+  emp.researchRate=1;
+  const P=emp.policies;
+  const mods = [P.Government?.mods,P.Economy?.mods,P.Values?.mods].filter(Boolean);
+  for(const m of mods){
+    if (m.dmg) emp.dmgMul*=m.dmg;
+    if (m.hp) emp.hpMul*=m.hp;
+    if (m.prod) emp.prodMul*=m.prod;
+    if (m.growth) emp.growthMul*=m.growth;
+    if (m.research) emp.researchRate*=m.research;
+    if (m.metal) emp.resMul.metal*=m.metal;
+    if (m.crystal) emp.resMul.crystal*=m.crystal;
+    if (m.aether) emp.resMul.aether*=m.aether;
+  }
+}
+
+function queueResearch(state, emp, techId){
+  // Just flag desire; research accumulates empire-wide
+  emp.targetTech = TECHS.find(t=>t.id===techId) || null;
+}
+
+function completeTech(emp, tech){
+  emp.techs.add(tech.id);
+  // apply persistent empire modifiers
+  if (tech.id==='warp') emp.range *= 1.2;
+  if (tech.id==='lasers') emp.dmgMul *= 1.2;
+  if (tech.id==='shields') emp.hpMul *= 1.25;
+  if (tech.id==='robots') emp.prodMul *= 1.2;
+  if (tech.id==='bio') emp.growthMul *= 1.2;
+  if (tech.id==='ascend') {/* unlock project handled by UI check */}
+}
+
+/*** ======= Economy / Build ======= ***/
+function enqueueBuild(star,type){
+  star.buildQueue.push({type, progress:0});
+}
+
+function canAfford(emp, cost){
+  for(const k in cost){ if ((emp.res[k]||0) < cost[k]) return false; }
+  return true;
+}
+function payCost(emp,cost){
+  for(const k in cost){ emp.res[k]-=cost[k]; }
+}
+
+function econStep(state, dt){
+  // dt in seconds
+  state.lastEconomy += dt;
+  if (state.lastEconomy < 1) return;
+  const steps = Math.floor(state.lastEconomy);
+  state.lastEconomy -= steps;
+
+  for(let s=0;s<steps;s++){
+    // aether currents drift
+    state.aetherPhase += 0.015;
+
+    for(const emp of state.empires){
+      // empire-wide research tick
+      let empireResearch = 0;
+      const myStars = state.stars.filter(x=>x.owner===emp.id);
+      for(const st of myStars){
+        // production & growth
+        const currBoost = 1 + 0.2*Math.sin((st.x/DPR + st.y/DPR)/240 + state.aetherPhase); // aether wave
+        const prod = Math.max(1, Math.floor((st.prod * (st.surgeTimer>0?1.6:1) * emp.prodMul) * currBoost));
+        const growth = Math.max(1, Math.floor((st.growth * emp.growthMul) * (0.8+0.4*Math.sin(state.aetherPhase+st.id))));
+        const research = Math.max(0, Math.floor((st.research * emp.researchRate) * (st.surgeTimer>0?1.4:1)));
+
+        st.stock.metal   += Math.floor(prod * (st.metal/100) * emp.resMul.metal);
+        st.stock.crystal += Math.floor(prod * (st.crystal/100) * emp.resMul.crystal);
+        st.stock.aether  += Math.floor(growth * (st.aether/100) * emp.resMul.aether);
+        empireResearch += research;
+
+        // Build queues
+        if (st.buildQueue.length){
+          let job = st.buildQueue[0];
+          const spec = SHIPS[job.type];
+          // Try to pay on first work tick
+          if (!job.paid){
+            if (canAfford(emp, spec.cost)){
+              payCost(emp, spec.cost);
+              job.paid = true;
+            } else {
+              // can't afford — stall
+              job.progress = Math.max(0, job.progress-0.1);
+              continue;
+            }
+          }
+          job.progress += (st.surgeTimer>0?1.65:1) * (1 + st.prod/50);
+          if (job.progress >= spec.build){
+            const ship = makeShip(job.type, emp, st);
+            st.garrison.push(ship);
+            emp.ships.push(ship);
+            st.buildQueue.shift();
+          }
+        }
+
+        // Projects
+        if (st.projects.gate){
+          // cost is paid upfront via UI
+          st.projects.gateProg += (st.surgeTimer>0?2.0:1.0);
+          if (st.projects.gateProg >= 200){
+            // Victory!
+            state.victory = {type:'Science', winner:emp};
+          }
+        }
+
+        if (st.surgeTimer>0) st.surgeTimer--;
+        if (st.surgeCooldown>0) st.surgeCooldown--;
+
+        // Local skirmishes: if multiple owners present
+        resolveStarCombat(state, st);
+      }
+
+      // Empire research target
+      if (emp.targetTech){
+        emp.research += empireResearch;
+        if (emp.research >= emp.targetTech.cost){
+          emp.research -= emp.targetTech.cost;
+          completeTech(emp, emp.targetTech);
+          emp.targetTech = null;
+        }
+      } else {
+        // store as generic science until chosen
+        emp.research += empireResearch*0.25;
+      }
+
+      // Ability cooldown
+      if (emp.abilityCooldown>0) emp.abilityCooldown--;
+    }
+
+    // Move en-route ships
+    for (const emp of state.empires){
+      for (const ship of emp.ships){
+        if (ship.at===null && ship.to!=null){
+          ship.progress += 0.012 * (SHIPS[ship.type].spd/80);
+          if (ship.progress>=1){
+            const dst = state.stars.find(s=>s.id===ship.to);
+            ship.x=dst.x; ship.y=dst.y; ship.at=dst.id; ship.to=null; ship.progress=0;
+            dst.garrison.push(ship);
+            // Colonization if neutral & colony present
+            if (dst.owner===null && ship.type==='Colony'){
+              dst.owner=emp.id;
+              dst.pop=20; dst.prod=10; dst.research=6;
+            }
+          } else {
+            const a = state.stars.find(s=>s.id===ship.from);
+            const b = state.stars.find(s=>s.id===ship.to);
+            ship.x = lerp(a.x,b.x,ship.progress);
+            ship.y = lerp(a.y,b.y,ship.progress);
+          }
+        }
+      }
+    }
+  }
+}
+
+function resolveStarCombat(state, star){
+  const sides = new Map(); // owner -> ships
+  for (const sh of star.garrison){
+    const k = sh.owner;
+    if (!sides.has(k)) sides.set(k, []);
+    sides.get(k).push(sh);
+  }
+  if (sides.size<=1) return;
+  // All-vs-all — pick player AI pairwise
+  const owners = [...sides.keys()];
+  // Damage phase
+  for (const o of owners){
+    for (const sh of sides.get(o)){
+      sh.cooldown = Math.max(0, sh.cooldown-1);
+      if (sh.cooldown<=0){
+        // pick a random target from another side
+        const foesOwners = owners.filter(x=>x!==o);
+        const foeOwner = pick(foesOwners);
+        const foeShips = sides.get(foeOwner);
+        const target = pick(foeShips);
+        // apply damage
+        const emp = state.empires[o];
+        const spec = SHIPS[sh.type];
+        const dmg = spec.dmg * (emp?.dmgMul||1);
+        target.hp -= dmg;
+        sh.cooldown = Math.max(1, Math.floor(60/spec.rof));
+      }
+    }
+  }
+  // Cleanup dead
+  star.garrison = star.garrison.filter(sh=>sh.hp>0);
+  for(const emp of state.empires){
+    emp.ships = emp.ships.filter(sh=>sh.hp>0);
+  }
+  // If one side remains, owner may flip if no defenders left
+  const newSides = new Set(star.garrison.map(sh=>sh.owner));
+  if (newSides.size===1){
+    const lone = [...newSides][0];
+    // If previously owned by enemy and enemy has 0 ships here, flip
+    star.owner = lone;
+  }
+}
+
+function sendShip(state, ship, dstId){
+  const fromStar = state.stars.find(s=>s.id===ship.at);
+  const dst = state.stars.find(s=>s.id===dstId);
+  const emp = state.empires[ship.owner];
+  if (dist(fromStar, dst)/DPR > emp.range) return;
+  // must be linked by hyperlane (or allow free? we'll allow any within range)
+  // Remove from star garrison
+  const arr = state.stars.find(s=>s.id===ship.at).garrison;
+  const i = arr.indexOf(ship);
+  if (i>=0) arr.splice(i,1);
+  ship.from = ship.at;
+  ship.at=null;
+  ship.to=dstId;
+  ship.progress=0;
+}
+
+function startAscension(state, star, emp){
+  if (!emp.techs.has('ascend')) return;
+  if (star.projects.gate) return;
+  const cost = {metal:600, crystal:260, aether:220};
+  if (!canAfford(emp, cost)) return;
+  payCost(emp, cost);
+  star.projects.gate = true;
+  pushMsg(state, `Ascension Gate started at ${star.name}. Safeguard it!`);
+}
+
+/*** ======= Ability ======= ***/
+function triggerSurge(star, emp){
+  if (emp.abilityCooldown>0 || star.surgeCooldown>0) return;
+  star.surgeTimer = 12; // seconds of boost
+  star.surgeCooldown = 30; // local cd
+  emp.abilityCooldown = 24; // global cd
+  pushMsg(game, `Chrono Surge activated at ${star.name}.`);
+}
+
+/*** ======= Messages ======= ***/
+function pushMsg(state, msg){
+  state.msgLog.unshift({msg, t:Date.now()});
+  if (state.msgLog.length>6) state.msgLog.length=6;
+}
+
+/*** ======= Input / UI State ======= ***/
+let mouse = {x:0,y:0};
+canvas.addEventListener('mousemove', e=>{
+  const rect=canvas.getBoundingClientRect();
+  mouse.x = (e.clientX-rect.left)*DPR;
+  mouse.y = (e.clientY-rect.top)*DPR;
+  if (!game) return;
+  // hover star
+  game.hover = game.stars.find(s=>Math.hypot(s.x-mouse.x,s.y-mouse.y)<12*DPR) || null;
+});
+canvas.addEventListener('click', e=>{
+  if (!game) return;
+  const hv = game.hover;
+  if (hv){
+    // If a ship is selected for move
+    if (game.selShip){
+      sendShip(game, game.selShip, hv.id);
+      game.selShip = null;
+      return;
+    }
+    game.selected = hv;
+  } else {
+    game.selected = null;
+    game.selShip = null;
+  }
+});
+
+window.addEventListener('keydown', e=>{
+  if (!game) return;
+  if (e.key===' ') game.paused=!game.paused;
+  if (e.key==='h' || e.key==='H') toggleHelp(true);
+  if (e.key==='r' || e.key==='R') openResearch();
+  if (e.key==='p' || e.key==='P') openPolicies();
+});
+
+/*** ======= Panels ======= ***/
+const leftBar = document.getElementById('leftBar');
+const rightBar = document.getElementById('rightBar');
+const bottomBar = document.getElementById('bottomBar');
+
+function renderBars(){
+  if (!game) return;
+  const me = game.empires[0];
+  // LEFT — Empire status
+  leftBar.innerHTML = `
+    <div><b>${me.name}</b> — <span style="opacity:.8">${me.race}</span></div>
+    <div class="tiny" style="margin-top:4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="chip">Metal: ${niceNum(me.res.metal)}</span>
+      <span class="chip">Crystal: ${niceNum(me.res.crystal)}</span>
+      <span class="chip">Aether: ${niceNum(me.res.aether)}</span>
+      <span class="chip">Research: ${niceNum(me.research)}${me.targetTech?` / ${me.targetTech.name}`:""}</span>
+      <span class="chip">Range: ${Math.floor(me.range)}</span>
+      <span class="chip">Chrono ${me.abilityCooldown>0?`CD ${me.abilityCooldown}s`:`Ready`}</span>
+    </div>
+    <div class="tiny" style="margin-top:6px;opacity:.85">
+      <b>Policies:</b>
+      ${(me.policies.Government?.name)||'—'}, ${(me.policies.Economy?.name)||'—'}, ${(me.policies.Values?.name)||'—'}
+    </div>
+    <div class="tiny" style="margin-top:6px;opacity:.8">Press <span class="kbd">R</span> Research • <span class="kbd">P</span> Policies • <span class="kbd">Space</span> Pause</div>
+    <div class="tiny" style="margin-top:6px;opacity:.8">${game.paused?'<b>Paused</b>':'Running'}</div>
+    <div class="tiny" style="margin-top:8px;opacity:.8">
+      ${game.msgLog.map(m=>`• ${m.msg}`).join('<br>')}
+    </div>
+  `;
+
+  // RIGHT — Selection details
+  const s = game.selected;
+  if (s){
+    const own = s.owner===0;
+    const ownerName = s.owner==null?'Neutral': game.empires[s.owner].name;
+    rightBar.innerHTML = `
+      <div><b>${s.name}</b></div>
+      <div class="tiny" style="opacity:.8">${ownerName}${s.projects.gate?` • <b>Ascension Gate</b> ${Math.floor(s.projects.gateProg/2)}%`:''}</div>
+      <div class="tiny" style="margin-top:6px">Pop:${s.pop} • Prod:${s.prod} • Res:${s.research}</div>
+      <div class="tiny" style="margin-top:6px;opacity:.85">Richness:
+        <span class="chip">M ${s.metal}</span>
+        <span class="chip">C ${s.crystal}</span>
+        <span class="chip">Ae ${s.aether}</span>
+      </div>
+      <div class="tiny" style="margin-top:6px;opacity:.85">Stores:
+        <span class="chip">M ${niceNum(s.stock.metal)}</span>
+        <span class="chip">C ${niceNum(s.stock.crystal)}</span>
+        <span class="chip">Ae ${niceNum(s.stock.aether)}</span>
+      </div>
+      <div class="tiny" style="margin-top:6px;opacity:.85">Garrison: ${
+        s.garrison.length? s.garrison.map(g=>g.type[0]).join(' ') : '—'
+      }</div>
+      ${own? `<div class="tiny" style="margin-top:6px;opacity:.85">Surge: ${s.surgeCooldown>0?`CD ${s.surgeCooldown}s`:(s.surgeTimer>0?`Active ${s.surgeTimer}s`:'Ready')}</div>`:''}
+    `;
+  } else {
+    rightBar.innerHTML = `<div><b>Galaxy</b></div><div class="tiny" style="opacity:.8">Select a star to manage or inspect.</div>`;
+  }
+
+  // BOTTOM — Context actions
+  bottomBar.innerHTML = '';
+  const bb = (html) => { const d=document.createElement('div'); d.innerHTML=html; bottomBar.appendChild(d.firstElementChild); };
+  const btn = (label, on)=>{ const b=document.createElement('button'); b.className='act'; b.textContent=label; b.onclick=on; bottomBar.appendChild(b); };
+
+  if (s && s.owner===0){
+    bb(`<span class="label">Build at ${s.name}:</span>`);
+    btn('Scout', ()=> enqueueBuild(s,'Scout'));
+    btn('Colony', ()=> enqueueBuild(s,'Colony'));
+    btn('Frigate', ()=> enqueueBuild(s,'Frigate'));
+    if (game.empires[0].techs.has('ascend') && !s.projects.gate){
+      btn('Start Ascension Gate', ()=> startAscension(game, s, game.empires[0]));
+    }
+    if (s.surgeCooldown===0 && game.empires[0].abilityCooldown===0){
+      btn('Chrono Surge', ()=> triggerSurge(s, game.empires[0]));
+    }
+    bb(`<span class="label">Select ship to move:</span>`);
+    for (const g of s.garrison){
+      const d=document.createElement('button');
+      d.className='act';
+      d.textContent = g.type;
+      d.onclick = ()=> { game.selShip=g; pushMsg(game, `Selected ${g.type}. Click a destination star.`); };
+      bottomBar.appendChild(d);
+    }
+    btn('Research (R)', openResearch);
+    btn('Policies (P)', openPolicies);
+  } else {
+    bb(`<span class="label">Global:</span>`);
+    btn(game.paused?'Resume':'Pause', ()=> game.paused=!game.paused);
+    btn('Research (R)', openResearch);
+    btn('Policies (P)', openPolicies);
+    btn('Help (H)', ()=> toggleHelp(true));
+  }
+}
+
+/*** ======= Modal overlays ======= ***/
+const titleOverlay = document.getElementById('titleOverlay');
+const helpOverlay = document.getElementById('helpOverlay');
+document.getElementById('startBtn').onclick = ()=>{
+  titleOverlay.style.display='none';
+  start();
+};
+document.getElementById('howBtn').onclick = ()=> toggleHelp(true);
+document.getElementById('closeHelp').onclick = ()=> toggleHelp(false);
+function toggleHelp(on){ helpOverlay.style.display = on?'flex':'none'; }
+
+/*** ======= Research / Policies Simple Dialogs ======= ***/
+function openResearch(){
+  if (!game) return;
+  const me = game.empires[0];
+  const box = document.createElement('div');
+  box.className='overlay';
+  box.innerHTML = `<div class="card"><h3 class="title">Research</h3>
+  <div class="sub">Pick a tech to focus. Progress carries over between picks.</div>
+  <div id="researchList"></div>
+  <div style="margin-top:.5rem"><button class="btn" id="closeR">Close</button></div></div>`;
+  document.getElementById('uiRoot').appendChild(box);
+  const list = box.querySelector('#researchList');
+  for (const t of TECHS){
+    const owned = me.techs.has(t.id);
+    const b=document.createElement('button');
+    b.className='btn';
+    b.textContent = `${owned?'✓ ':''}${t.name} — ${t.cost} rp`;
+    b.title = t.desc;
+    b.disabled = owned;
+    b.onclick = ()=> { queueResearch(game, me, t.id); renderBars(); };
+    list.appendChild(b);
+  }
+  box.querySelector('#closeR').onclick = ()=> box.remove();
+}
+
+function openPolicies(){
+  if (!game) return;
+  const me = game.empires[0];
+  const box = document.createElement('div');
+  box.className='overlay';
+  box.innerHTML = `<div class="card"><h3 class="title">Policies</h3>
+  <div class="sub">Choose one option in each category. Effects apply immediately.</div>
+  <div id="polWrap"></div>
+  <div style="margin-top:.5rem"><button class="btn" id="closeP">Close</button></div></div>`;
+  document.getElementById('uiRoot').appendChild(box);
+  const wr = box.querySelector('#polWrap');
+
+  function drawCat(cat, opts){
+    const row=document.createElement('div');
+    row.style.margin='6px 0 10px';
+    const title=document.createElement('div');
+    title.innerHTML = `<b>${cat}</b> — <span class="tiny" style="opacity:.8">${me.policies[cat]?.name||'—'}</span>`;
+    row.appendChild(title);
+    const line=document.createElement('div');
+    for(const p of opts){
+      const b=document.createElement('button');
+      b.className='btn';
+      b.textContent = p.name;
+      b.title = p.desc;
+      b.onclick = ()=> { me.policies[cat]=p; applyPolicyMods(me); renderBars(); };
+      line.appendChild(b);
+    }
+    row.appendChild(line);
+    wr.appendChild(row);
+  }
+  drawCat('Government', POLICIES.Government);
+  drawCat('Economy', POLICIES.Economy);
+  drawCat('Values', POLICIES.Values);
+
+  box.querySelector('#closeP').onclick = ()=> box.remove();
+}
+
+/*** ======= Drawing ======= ***/
+function draw(){
+  // Space background
+  ctx.clearRect(0,0,W,H);
+  drawBackdrop();
+  drawAetherCurrents();
+  drawHyperlanes();
+  drawStars();
+  drawSelections();
+  if (game?.victory) drawVictory();
+}
+
+function drawBackdrop(){
+  // Starfield dots
+  ctx.save();
+  const n=220;
+  ctx.globalAlpha=0.75;
+  for(let i=0;i<n;i++){
+    const x=(i*127.3%W)|0, y=(i*53.7%H)|0;
+    const s=(i%7===0)?2:1;
+    ctx.fillStyle= i%9===0 ? '#9fd4ff' : (i%11===0 ? '#ffd6f6' : '#c4e2ff');
+    ctx.fillRect(x,y,s,s);
+  }
+  // subtle vignette
+  const g=ctx.createRadialGradient(W*0.5,H*0.5,0,W*0.5,H*0.5,Math.max(W,H)*0.65);
+  g.addColorStop(0,'rgba(0,0,0,0)');
+  g.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.restore();
+}
+
+function drawAetherCurrents(){
+  if (!game) return;
+  ctx.save();
+  ctx.globalCompositeOperation='screen';
+  const phase = game.aetherPhase;
+  for (let i=0;i<3;i++){
+    const amp = 18*DPR + i*7*DPR;
+    const yy = H*0.25 + i*H*0.22;
+    ctx.beginPath();
+    for(let x=0;x<=W;x+=6*DPR){
+      const y = yy + Math.sin((x/DPR)/110 + phase + i)*amp;
+      if (x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.lineWidth = 2.5*DPR;
+    ctx.strokeStyle = i%2===0 ? 'rgba(127,255,212,0.20)' : 'rgba(255,156,246,0.15)';
+    ctx.shadowBlur = 18*DPR; ctx.shadowColor = ctx.strokeStyle;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHyperlanes(){
+  if (!game) return;
+  ctx.save();
+  ctx.lineWidth=0.8*DPR;
+  for(const s of game.stars){
+    const adj = game.routes.get(s.id)||[];
+    for(const j of adj){
+      const o = game.stars[j];
+      ctx.beginPath();
+      ctx.moveTo(s.x,s.y); ctx.lineTo(o.x,o.y);
+      ctx.strokeStyle='rgba(120,150,220,0.16)';
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawStars(){
+  ctx.save();
+  for(const s of game.stars){
+    // glow
+    ctx.beginPath(); ctx.arc(s.x,s.y,10*DPR,0,Math.PI*2);
+    const col = s.owner==null?COLORS.neutral: game.empires[s.owner].color;
+    ctx.fillStyle = col; ctx.globalAlpha=0.10; ctx.fill();
+    // core
+    ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(s.x,s.y,5.5*DPR,0,Math.PI*2);
+    ctx.fillStyle=col; ctx.shadowBlur=14*DPR; ctx.shadowColor=col; ctx.fill();
+
+    // owner ring
+    ctx.beginPath(); ctx.arc(s.x,s.y,9*DPR,0,Math.PI*2);
+    ctx.lineWidth=1.2*DPR; ctx.strokeStyle = s.owner==null?'rgba(180,190,220,0.35)':col; ctx.stroke();
+
+    // name
+    ctx.shadowBlur=0; ctx.font = (12*DPR)+'px system-ui';
+    ctx.fillStyle='rgba(220,235,255,0.9)';
+    ctx.fillText(s.name, s.x+10*DPR, s.y-8*DPR);
+  }
+  ctx.restore();
+}
+
+function drawSelections(){
+  if (!game) return;
+  const hov = game.hover;
+  const sel = game.selected;
+  ctx.save();
+
+  if (hov){
+    ctx.beginPath(); ctx.arc(hov.x,hov.y,13*DPR,0,Math.PI*2);
+    ctx.lineWidth=2*DPR; ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.stroke();
+  }
+  if (sel){
+    ctx.beginPath(); ctx.arc(sel.x,sel.y,16*DPR,0,Math.PI*2);
+    ctx.lineWidth=2.2*DPR; ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.stroke();
+
+    // draw reach ring
+    const me = game.empires[0];
+    ctx.beginPath();
+    ctx.arc(sel.x, sel.y, me.range*DPR, 0, Math.PI*2);
+    ctx.lineWidth = 0.9*DPR;
+    ctx.strokeStyle='rgba(127,255,212,0.15)'; ctx.stroke();
+
+    // Draw garrison ships as pips
+    let off=0;
+    for(const g of sel.garrison){
+      const c = game.empires[g.owner].color;
+      const x = sel.x + (off*8+14)*DPR;
+      const y = sel.y + 10*DPR;
+      ctx.beginPath(); ctx.arc(x,y,3.5*DPR,0,Math.PI*2);
+      ctx.fillStyle=c; ctx.fill();
+      ctx.font=(10*DPR)+'px system-ui'; ctx.fillStyle='#cfe8ff';
+      ctx.fillText(g.type[0], x+6*DPR, y+3*DPR);
+      off++;
+    }
+  }
+
+  // draw traveling ships
+  for (const emp of game.empires){
+    for (const sh of emp.ships){
+      if (sh.at===null && sh.to!=null){
+        ctx.beginPath(); ctx.arc(sh.x,sh.y,2.8*DPR,0,Math.PI*2);
+        ctx.fillStyle=game.empires[sh.owner].color; ctx.fill();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawVictory(){
+  const v = game.victory;
+  if (!v) return;
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.textAlign='center';
+  ctx.font=(28*DPR)+'px system-ui';
+  ctx.fillText(`${v.winner.name} achieved ${v.type} Victory`, W/2, H/2);
+  ctx.font=(14*DPR)+'px system-ui';
+  ctx.fillText(`Reload to play again`, W/2, H/2+28*DPR);
+  ctx.restore();
+}
+
+/*** ======= Main Loop ======= ***/
+let last=now();
+function loop(){
+  requestAnimationFrame(loop);
+  if (!game) return draw();
+  const t=now(); const dt=(t-last)/1000; last=t;
+  if (!game.paused) {
+    econStep(game, dt);
+    // Simple AI
+    aiStep(game, game.empires[1]);
+    if (rand()<0.7) aiStep(game, game.empires[2]);
+  }
+  renderBars();
+  draw();
+}
+
+/*** ======= Boot ======= ***/
+function start(){
+  resize();
+  game = newGame();
+  pushMsg(game, "New galaxy initialized.");
+}
+resize(); loop();
+
+})();
+</script>
+</body>
+</html>
