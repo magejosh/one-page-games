@@ -3,6 +3,8 @@ layout: home
 title: One Page Games 🎮
 ---
 
+# One Page Games 🎮
+
 A growing collection of tiny, single-file games. Click a version to play.
 
 {% assign files = site.static_files | where: "extname", ".html" | sort: "path" %}
@@ -40,3 +42,7 @@ A growing collection of tiny, single-file games. Click a version to play.
     </li>
 {% endif %}
 </ul>
+
+
+Stay tuned for more!
+See https://mageworks.studio and https://mageworks.site to see more of my work.
