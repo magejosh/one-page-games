@@ -45,5 +45,5 @@ A growing collection of tiny, single-file games. Click a version to play.
 
 
 Stay tuned for more!
-See [https://mageworks.studio](https://mageworks.studio) and [https://mageworks.site](https://mageworks.site] to see more of my work.
+See [https://mageworks.studio](https://mageworks.studio) and [https://mageworks.site](https://mageworks.site) to see more of my work.
 ![](https://i.imgur.com/KHOtK2O.png)
