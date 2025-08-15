@@ -2,6 +2,7 @@ title: One Page Games
 description: Tiny, single-file web games by magejosh
 theme: minima
 
-# Expose all static files so Liquid can iterate them
-include:
-  - .
+# (optional) keep the builder from looking at CI folders
+exclude:
+  - .github
+  - node_modules
