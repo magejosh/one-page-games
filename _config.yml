@@ -1,6 +1,6 @@
 title: One Page Games
 description: Tiny, single-file web games by magejosh
-theme: minima
+theme: midnight
 
 # (optional) keep the builder from looking at CI folders
 exclude:
