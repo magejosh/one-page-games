@@ -19,6 +19,10 @@ These are quick experiments, prototypes, and fun little time-wasters — perfect
 
 ## 🚀 How to Play
 
+Online: [https://magejosh.github.io/one-page-games/](https://magejosh.github.io/one-page-games/)
+
+Locally:
+
 1. Clone this repo:
 
    ```bash
