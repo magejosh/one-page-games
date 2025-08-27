@@ -42,6 +42,7 @@ h2{margin:4px 0 8px; font-size:18px}
 .tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
 .tile .grow{position:absolute; top:2px; left:2px; font-size:12px}
 #hl{position:absolute; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
+.placing .tile:hover{border:2px dashed #9bd0ff; background:rgba(152,206,255,.1)}
 .minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
 #miniCanvas{width:100%; height:100%}
 .viewRect{position:absolute; border:2px solid #9bd0ff; box-shadow:0 0 6px rgba(152,206,255,.7) inset; pointer-events:none}
@@ -74,6 +75,7 @@ h2{margin:4px 0 8px; font-size:18px}
   <div class="row" style="gap:14px; margin-top:6px">
     <span class="pill">Leader: <b>Cozy Chief</b></span>
     <span class="pill">Tier <b id="tier">Hamlet I</b></span>
+    <span id="tierNext" class="small"></span>
     <span class="pill">Day <b id="day">1</b></span>
     <span class="pill">Season <b id="season">Spring</b></span>
     <span class="pill">Time <b id="clock">06:00</b></span>
@@ -101,6 +103,7 @@ h2{margin:4px 0 8px; font-size:18px}
       <button id="gStone" class="btn">🗿 Scavenge Stone<br><span class="small">+3 stone · 5s</span></button>
       <button id="gClay" class="btn">🧱 Dig Clay<br><span class="small">+3 clay · 5s</span></button>
       <button id="gFlax" class="btn">🌿 Gather Flax<br><span class="small">+2 flax · 6s</span></button>
+      <button id="recruit" class="btn">👪 Recruit Villager<br><span class="small">-30 food · 10s</span></button>
     </div>
     <h2 style="margin-top:10px">Build</h2>
     <div id="buildList"></div>
@@ -110,7 +113,6 @@ h2{margin:4px 0 8px; font-size:18px}
     <div class="mapWrap">
       <div class="viewport" id="viewport">
         <div id="map"></div>
-        <div id="hl"></div>
       </div>
       <div>
         <h2>Minimap</h2>
@@ -260,6 +262,7 @@ const S={
   timers:{chief:0, quarry:0},
   growing:false,
 };
+let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null}); } S.tiles.push(row); }
 function scatterNodes(){
@@ -273,7 +276,13 @@ function buildResourceRow(){
   const row=$('#resRow'); row.innerHTML='';
   RES.forEach(k=>{
     const pill=document.createElement('span'); pill.className='pill';
-    pill.innerHTML = `${EM[k]} <b id="r_${k}">${Math.floor(S.res[k]||0)}</b> <span class="small" style="margin-left:4px">${k}</span>`;
+    const v = S.res[k]||0;
+    const disp = k==='pop' ? v.toFixed(1) : Math.floor(v);
+    pill.innerHTML = `${EM[k]} <b id="r_${k}">${disp}</b> <span class="small" style="margin-left:4px">${k}</span>`;
+    if(k==='pop'){
+      pill.id = 'pill_pop';
+      pill.title = `${v.toFixed(1)} / ${Math.floor(S.res.housing||0)} housing`;
+    }
     row.appendChild(pill);
   });
 }
@@ -301,14 +310,15 @@ function rebuildBuildListForTech(){ buildBuildList(); updateBuildButtons(); }
 function enterPlacement(k){
   S.place=k; $('#placingText').textContent='Placing: '+BUILD.find(x=>x.k===k).name;
   $('#planner').textContent='Click a tile to place. Esc to cancel.'; log('Placement mode: '+k);
+  mapEl.classList.add('placing');
 }
 function exitPlacement(msg){
   S.place=null; $('#placingText').textContent=''; if(msg) $('#planner').textContent=msg;
-  hl.style.display='none';
+  mapEl.classList.remove('placing');
 }
 
 // ===== Map & camera
-const mapEl=$('#map'); const vp=$('#viewport'); const hl=$('#hl');
+const mapEl=$('#map'); const vp=$('#viewport');
 function mapSize(){ return {w:WORLD_W*CELL, h:WORLD_H*CELL}; }
 function ensureMap(){
   if(mapEl.hasChildNodes()) return;
@@ -354,22 +364,6 @@ function centerOnAvatar(){
   S.cam.y = S.avatar.y*CELL - vh/2 + CELL/2;
   applyCam();
 }
-// Pixel-perfect highlight
-function showHL(tx,ty){
-  const z=S.cam.z; const {cx,cy}=camOffset();
-  hl.style.display='block';
-  hl.style.left=((tx*CELL - cx)*z)+'px';
-  hl.style.top=((ty*CELL - cy)*z)+'px';
-  hl.style.width=(CELL*z)+'px';
-  hl.style.height=(CELL*z)+'px';
-  hl.style.transform='none';
-}
-vp.addEventListener('mousemove',e=>{
-  if(!S.place){ hl.style.display='none'; return; }
-  const {wx,wy}=screenToWorld(e.clientX,e.clientY); const pos=worldToTile(wx,wy);
-  if(!pos){ hl.style.display='none'; return; } showHL(pos.tx,pos.ty);
-});
-vp.addEventListener('click',e=>{ if(!S.place) return; const {wx,wy}=screenToWorld(e.clientX,e.clientY); const p=worldToTile(wx,wy); if(!p) return; placeAt(S.place,p.tx,p.ty); });
 mapEl.addEventListener('click',e=>{
   const t=e.target.closest('.tile'); if(!t) return; e.stopPropagation();
   const x=+t.dataset.x, y=+t.dataset.y;
@@ -444,8 +438,21 @@ mini.parentElement.addEventListener('click',e=>{
 
 // ===== gameplay
 function updateResAndMeta(){
-  RES.forEach(k=>$('#r_'+k).textContent=Math.floor(S.res[k]||0));
-  $('#tier').textContent=TIERS[S.tier].name; $('#day').textContent=S.day;
+  RES.forEach(k=>{
+    const v=S.res[k]||0;
+    const disp = k==='pop' ? v.toFixed(1) : Math.floor(v);
+    $('#r_'+k).textContent=disp;
+    if(k==='pop'){
+      $('#pill_pop').title = `${v.toFixed(1)} / ${Math.floor(S.res.housing||0)} housing`;
+    }
+  });
+  $('#tier').textContent=TIERS[S.tier].name;
+  const nxt=TIERS[S.tier+1];
+  if(nxt){
+    const parts=Object.entries(nxt.need).map(([k,v])=>`${Math.floor(S.res[k]||0)}/${v} ${k}`);
+    $('#tierNext').textContent='→ '+nxt.name+': '+parts.join(', ');
+  } else $('#tierNext').textContent='';
+  $('#day').textContent=S.day;
   $('#season').textContent=SEASONS[S.season].name;
   const h=Math.floor(S.secs/60)%24, m=Math.floor(S.secs%60);
   $('#clock').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
@@ -495,12 +502,27 @@ function produce(dtMinutes){
 
   // Pop growth & food
   const spare=(S.res.housing||0)-(S.res.pop||0);
-  const prev=Math.floor(S.res.pop||0);
-  const growing = spare>0 && S.res.food>20;
-  if(growing) S.res.pop = Math.min(S.res.pop + 0.01*dt, S.res.housing);
-  const now=Math.floor(S.res.pop||0);
-  if(now>prev) log(`+${now-prev} population: spare housing & food surplus`);
-  if(growing !== S.growing){ S.growing = growing; redrawTiles(); }
+// spare is defined just above this block
+const prev = Math.floor(s.res.pop || 0);
+const growing = spare > 0 && s.res.food > 20;
+
+if (growing) {
+  // keep main's happiness multiplier
+  const mult = Math.max(1, (s.happy - 100) / 100);
+  s.res.pop = Math.min(s.res.pop + 0.01 * mult * dt, s.res.housing);
+}
+
+const now = Math.floor(s.res.pop || 0);
+
+// keep codex's grow-state toggle + redraw
+if (growing !== s.growing) { s.growing = growing; redrawTiles(); }
+
+// keep main's per-villager arrival log (avoids duplicate/ambiguous messages)
+while (lastPop < now) {
+  lastPop++;
+  log(`New villager arrived (population: ${lastPop}).`);
+}
+
   const eat=Math.min(S.res.food, (S.res.pop*0.02)*dt); S.res.food -= eat;
   if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
   S.happy = clamp(S.happy, 50, 130);
@@ -626,6 +648,18 @@ $('#gFood').onclick=e=>{ gain({food:5}); cooldown(e.currentTarget,3000); log("Pi
 $('#gStone').onclick=e=>{ gain({stone:3}); cooldown(e.currentTarget,5000); log("Scavenged stone."); };
 $('#gClay').onclick=e=>{ gain({clay:3}); cooldown(e.currentTarget,5000); log("Waded the creek for clay."); };
 $('#gFlax').onclick=e=>{ gain({flax:2}); cooldown(e.currentTarget,6000); log("Collected flax stalks."); };
+$('#recruit').onclick=e=>{
+  if(S.res.food>=30 && (S.res.housing||0)>S.res.pop){
+    S.res.food-=30;
+    S.res.pop+=1;
+    lastPop=Math.floor(S.res.pop);
+    log("New villager arrived (population: "+lastPop+").");
+    cooldown(e.currentTarget,10000);
+    updateResAndMeta(); updateBuildButtons();
+  } else {
+    log("Need food and housing to recruit.");
+  }
+};
 $('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
 $('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
 
