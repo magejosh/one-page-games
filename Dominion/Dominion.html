@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hearth &amp; Dominion — Single‑File Settlement RTS</title>
+<style>
+  :root{
+    --bg:#0e1116;         /* starry charcoal */
+    --panel:#161b22;      /* dark panel */
+    --panel-2:#0b0f14;    /* deeper */
+    --accent:#7dd3fc;     /* sky */
+    --accent-2:#a78bfa;   /* amethyst */
+    --accent-3:#34d399;   /* verdant */
+    --warn:#f59e0b;       /* amber */
+    --danger:#ef4444;     /* red */
+    --text:#dbeafe;       /* mist */
+    --muted:#94a3b8;      /* slate */
+    --good:#22c55e;       /* green */
+    --gold:#facc15;       /* gold */
+    --wood:#b45309;       /* wood */
+    --crystal:#38bdf8;    /* crystal */
+  }
+  html,body{height:100%;margin:0;background:radial-gradient(1200px 700px at 60% 10%, #101521, #0b0f14 60%, #070a0f);color:var(--text);font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Cantarell, Noto Sans, Ubuntu, "Helvetica Neue", Arial;}
+  #game-wrap{position:relative;display:grid;grid-template-columns:320px 1fr 360px;grid-template-rows:auto 1fr;grid-template-areas:"top top top" "left main right";height:100vh;}
+  #topbar{grid-area:top;background:linear-gradient(180deg, rgba(45,78,120,.4), rgba(15,25,40,.6));border-bottom:1px solid #1f2937;display:flex;align-items:center;gap:12px;padding:10px 12px;backdrop-filter: blur(5px);}
+  .badge{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid #1f2937;padding:6px 10px;border-radius:10px;box-shadow:0 0 0 1px rgba(255,255,255,0.04) inset;}
+  .badge span{font-weight:700;}
+  .wood{color:var(--wood)}
+  .gold{color:var(--gold)}
+  .crystal{color:var(--crystal)}
+  .pop{color:var(--good)}
+  .vp{color:var(--accent-2)}
+  .btn{background:linear-gradient(180deg, rgba(125,211,252,.15), rgba(167,139,250,.08));border:1px solid #233044;color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer;transition:all .15s ease;}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(125,211,252,.15)}
+
+  #left{grid-area:left;background:linear-gradient(180deg, #0e131a, #0b0f14);border-right:1px solid #1f2937;padding:10px 8px;overflow:auto}
+  #right{grid-area:right;background:linear-gradient(180deg, #0e131a, #0b0f14);border-left:1px solid #1f2937;padding:10px 8px;overflow:auto}
+  #main{grid-area:main;position:relative;background:radial-gradient(800px 500px at 40% 60%, rgba(52, 211, 153, .06), rgba(56,189,248,.06) 40%, transparent 70%)}
+  .panel{background:var(--panel);border:1px solid #1f2937;border-radius:14px;padding:10px;margin-bottom:10px;box-shadow:0 0 0 1px rgba(255,255,255,0.04) inset}
+  .panel h3{margin:0 0 8px 0;font-size:15px;letter-spacing:.3px;color:#c7d2fe}
+
+  .grid{display:grid;grid-template-columns:repeat(2, 1fr);gap:8px}
+  .build-card{background:linear-gradient(180deg, rgba(52,211,153,.08), rgba(56,189,248,.04));border:1px solid #273343;border-radius:12px;padding:8px;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;}
+  .build-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(56,189,248,.12)}
+  .build-card .title{font-weight:700}
+  .cost{font-size:12px;color:var(--muted)}
+
+  .tabbar{display:flex;gap:8px;margin-bottom:8px}
+  .tab{flex:1;text-align:center;padding:8px;border-radius:10px;background:#0b1220;border:1px solid #1b2838;cursor:pointer}
+  .tab.active{background:linear-gradient(180deg, rgba(99,102,241,.18), rgba(6,8,14,.8));border-color:#424f7a}
+  .tech-list{display:flex;flex-direction:column;gap:8px}
+  .tech{display:flex;justify-content:space-between;align-items:center;gap:8px;background:linear-gradient(180deg, rgba(147,197,253,.08), rgba(99,102,241,.06));border:1px solid #28324a;padding:8px;border-radius:10px}
+  .tech.locked{opacity:.65;filter:saturate(.6)}
+  .progress{height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+  .progress>div{height:100%;background:linear-gradient(90deg, var(--accent-2), var(--accent));width:0%}
+
+  #log{font-size:12px;line-height:1.4;max-height:180px;overflow:auto}
+  #controls{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* bottom info */
+  #infobar{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
+  .infocard{background:rgba(10,15,22,.88);border:1px solid #1f2a3a;border-radius:12px;padding:8px 12px;backdrop-filter:blur(4px)}
+
+  /* SVG game canvas */
+  #game{width:100%;height:100%;display:block;background:linear-gradient(180deg, #1a2a1f, #0f1b12);}
+  .hud-float{position:absolute;pointer-events:none;}
+
+  /* Start overlay */
+  #start{position:fixed;inset:0;background:radial-gradient(800px 500px at 50% 20%, rgba(56,189,248,.15), rgba(52,211,153,.08) 50%, rgba(0,0,0,.8));display:flex;align-items:center;justify-content:center;z-index:10}
+  .start-card{width:min(960px, 92vw);max-height:88vh;overflow:auto;background:linear-gradient(180deg, #0d131e, #0a0f17);border:1px solid #273343;border-radius:16px;padding:18px;box-shadow:0 30px 120px rgba(56,189,248,.18)}
+  .factions{display:grid;grid-template-columns:repeat(auto-fit, minmax(180px,1fr));gap:10px}
+  .fac{background:linear-gradient(180deg, rgba(250,204,21,.05), rgba(59,130,246,.05));border:1px solid #2a364a;border-radius:12px;padding:10px;cursor:pointer}
+  .fac:hover{outline:2px solid rgba(125,211,252,.35)}
+  .fac h4{margin:0 0 6px 0}
+
+  /* Victory overlay */
+  #victory{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:radial-gradient(600px 400px at 50% 30%, rgba(250,204,21,.2), rgba(0,0,0,.85));z-index:20}
+  .vict-card{width:min(680px, 92vw);background:linear-gradient(180deg, #111827, #0a0f17);border:1px solid #374151;border-radius:16px;padding:16px;text-align:center}
+  .vict-card h2{margin-top:0;color:#fef08a}
+
+  /* Tooltip */
+  .tip{position:fixed;background:#0b1220;border:1px solid #1b2838;border-radius:10px;padding:8px;font-size:12px;max-width:280px;display:none;z-index:100}
+
+  /* Small helper badges in build cards */
+  .tag{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid #324155;color:#cbd5e1;background:#0b1220}
+
+  /* Minimap */
+  #minimap{position:absolute;right:14px;bottom:14px;width:180px;height:120px;border:1px solid #223041;background:#0b0f14;border-radius:10px;overflow:hidden}
+
+  /* key legend */
+  #legend{position:absolute;left:14px;bottom:14px;background:rgba(14,17,22,.85);border:1px solid #223041;border-radius:10px;padding:8px;font-size:12px}
+  #legend b{color:#e5e7eb}
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="topbar">
+    <div class="badge wood">🪵 Wood: <span id="res-wood">0</span></div>
+    <div class="badge crystal">🔷 Crystal: <span id="res-crystal">0</span></div>
+    <div class="badge gold">🪙 Gold: <span id="res-gold">0</span></div>
+    <div class="badge pop">👥 Pop: <span id="res-pop">0</span>/<span id="res-cap">0</span></div>
+    <div class="badge vp">🏛️ Culture: <span id="vp-culture">0</span></div>
+    <div class="badge vp">🧠 Tech: <span id="vp-tech">0</span></div>
+    <div class="badge vp">🤝 Politics: <span id="vp-dip">0</span></div>
+    <div class="badge vp">📦 Trade: <span id="vp-trade">0</span></div>
+    <div class="badge vp">⚔️ Conquest: <span id="vp-war">0</span></div>
+    <button class="btn" id="btn-pause">⏸️ Pause</button>
+    <button class="btn" id="btn-help">❓ Help</button>
+  </div>
+
+  <div id="left">
+    <div class="panel">
+      <h3>Build</h3>
+      <div class="grid" id="build-grid"></div>
+    </div>
+    <div class="panel">
+      <h3>Production</h3>
+      <div id="prod"></div>
+    </div>
+    <div class="panel">
+      <h3>Commands</h3>
+      <div id="controls">
+        <button class="btn" id="cmd-select-hero">🎖️ Select Hero</button>
+        <button class="btn" id="cmd-all-workers">🪓 Select Workers</button>
+        <button class="btn" id="cmd-all-military">⚔️ Select Army</button>
+        <button class="btn" id="cmd-attack">🗡️ Attack-Move</button>
+        <button class="btn" id="cmd-rally">🚩 Rally to Hero</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div id="main">
+    <svg id="game"></svg>
+    <div id="legend">
+      <div><b>Left Click</b>: Select / Issue order</div>
+      <div><b>Right Click</b>: Move / Attack‑move when in Attack mode</div>
+      <div><b>1</b>: Select Hero • <b>2</b>: Workers • <b>3</b>: Army</div>
+      <div><b>B</b>: Build mode • <b>T</b>: Tech panel • <b>H</b>: Help</div>
+    </div>
+    <canvas id="minimap" width="180" height="120"></canvas>
+    <div id="infobar"></div>
+  </div>
+
+  <div id="right">
+    <div class="panel">
+      <div class="tabbar">
+        <div class="tab active" data-tab="tech">Tech</div>
+        <div class="tab" data-tab="victory">Victory</div>
+      </div>
+      <div id="tab-tech" class="tabpage">
+        <div class="tech-list" id="tech-list"></div>
+      </div>
+      <div id="tab-victory" class="tabpage" style="display:none">
+        <div class="panel" style="background:rgba(56,189,248,.06)">
+          <h3>Victory Conditions</h3>
+          <ul style="margin:0 0 6px 18px;padding:0">
+            <li><b>Cultural</b>: Reach 1000 Culture (Shrines, Theater).</li>
+            <li><b>Technological</b>: Research “Grand Invention”.</li>
+            <li><b>Political</b>: Reach 1000 Politics (Embassy, Town Hall upgrades).</li>
+            <li><b>Trade</b>: Reach 1000 Trade (Markets, Caravans).</li>
+            <li><b>Conquest</b>: Destroy all enemy camps.</li>
+          </ul>
+        </div>
+        <div id="victory-progress"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="start">
+  <div class="start-card">
+    <h2 style="margin:0 0 6px 0">Hearth &amp; Dominion</h2>
+    <div style="color:var(--muted);margin-bottom:10px">Top‑down 2D settlement builder • RTS skirmish • Fantasy dark‑age vibes. Choose your settlement culture:</div>
+    <div class="factions" id="fac-choices"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+      <small>Tip: You are the <b>Hero</b>. You can gather, fight, and rally units. Resources must be deposited at the <b>Town Hall</b>.</small>
+      <button class="btn" id="btn-random">🎲 Random</button>
+    </div>
+  </div>
+</div>
+
+<div id="victory">
+  <div class="vict-card">
+    <h2 id="vict-title">Victory!</h2>
+    <p id="vict-desc">You have fulfilled a path to glory.</p>
+    <button class="btn" onclick="location.reload()">🔁 Play Again</button>
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+(function(){
+  // ========= Helpers =========
+  const $$ = sel => document.querySelector(sel);
+  const $$$ = sel => Array.from(document.querySelectorAll(sel));
+  const log = (msg) => {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    $$('#log').prepend(el);
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a,b)=>Math.random()*(b-a)+a;
+  const randi=(a,b)=>Math.floor(rand(a,b));
+
+  // ========= Game Config =========
+  const TILE = 32; // px per tile
+  const GRID_W = 48; // columns
+  const GRID_H = 30; // rows
+  const W = GRID_W * TILE;
+  const H = GRID_H * TILE;
+
+  const RES_TYPES = ['wood','crystal','gold'];
+
+  const VICTORY_TARGETS = { culture:1000, tech:1, dip:1000, trade:1000, war:3 };
+
+  const FACTIONS = {
+    Human:{desc:"Balanced. +10% Gold, unlocks Knight.", mods:{goldRate:1.1}, unique:{unit:'Knight'}},
+    Dwarf:{desc:"Master miners. +25% mining, sturdier units.", mods:{mineRate:1.25, hp:1.1}, unique:{unit:'Defender'}},
+    Elf:{desc:"Woods & crystal. +20% wood & crystal, swift archers.", mods:{woodRate:1.2, crystalRate:1.2, move:1.05}, unique:{unit:'Ranger'}},
+    Goblin:{desc:"Swarm & speed. Cheap, fast units.", mods:{unitCost:.9, move:1.1}, unique:{unit:'Sapper'}},
+    Orc:{desc:"Brutal warbands. +20% melee damage.", mods:{melee:1.2}, unique:{unit:'Berserker'}},
+    Alliance:{desc:"Human+Dwarf+Elf hybrid. +10% to all gathering.", mods:{goldRate:1.1, mineRate:1.1, woodRate:1.1, crystalRate:1.1}, unique:{unit:'Paladin'}},
+    Horde:{desc:"Goblin+Orc hybrid. +15% speed and melee.", mods:{move:1.15, melee:1.15, unitCost:.95}, unique:{unit:'Warchanter'}},
+  };
+
+  // Buildings and Units Catalog
+  const Buildings = {
+    TownHall:{name:'Town Hall',size:2,cost:{wood:100,gold:50}, desc:'Central deposit. Enables workers, upgrades, politics.',
+      effects:{cap:10, dip:1}, prod:[], unique:true},
+    House:{name:'House',size:1,cost:{wood:40}, desc:'Increases population cap by 5.', effects:{cap:5}},
+    LumberCamp:{name:'Lumber Camp',size:2,cost:{wood:60}, desc:'Workers return wood here faster.'},
+    Mine:{name:'Mine',size:2,cost:{wood:50, crystal:30}, desc:'Improves mining near deposits.'},
+    Farm:{name:'Farm',size:2,cost:{wood:50}, desc:'Modest food → +3 pop cap.', effects:{cap:3}},
+    Barracks:{name:'Barracks',size:2,cost:{wood:80,gold:40}, desc:'Trains Soldiers.', prod:[{unit:'Soldier', time:6000}]},
+    Archery:{name:'Archery Range',size:2,cost:{wood:90}, desc:'Trains Archers.', prod:[{unit:'Archer', time:6500}]},
+    MageTower:{name:'Mage Tower',size:2,cost:{wood:60, crystal:80}, desc:'Trains Mages.', prod:[{unit:'Mage', time:8000}]},
+    Market:{name:'Market',size:2,cost:{wood:80,gold:80}, desc:'Caravans & trade income.', prod:[{unit:'Caravan', time:7000}]},
+    Embassy:{name:'Embassy',size:2,cost:{wood:80, gold:120}, desc:'Generates Politics per minute.', effects:{dip:2}},
+    Shrine:{name:'Shrine',size:1,cost:{wood:50, crystal:20}, desc:'Generates Culture per minute.', effects:{culture:2}},
+    Theater:{name:'Theater',size:2,cost:{wood:120, gold:100}, desc:'Big Culture generation.', effects:{culture:6}},
+    Library:{name:'Library',size:2,cost:{wood:80, crystal:80}, desc:'Unlocks research & speed.', effects:{research:1}},
+    Workshop:{name:'Workshop',size:2,cost:{wood:100, gold:60}, desc:'Unlocks advanced tech.',},
+  };
+
+  const Units = {
+    Hero:{hp:200, atk:18, range:22, speed:90, carry:20, gather:true, melee:true, icon:'★'},
+    Worker:{hp:65, atk:6, range:12, speed:70, carry:15, gather:true, icon:'⛏️'},
+    Soldier:{hp:120, atk:12, range:18, speed:70, melee:true, icon:'⚔️'},
+    Archer:{hp:85, atk:9, range:100, speed:72, icon:'🏹'},
+    Mage:{hp:70, atk:16, range:110, speed:70, icon:'✨'},
+    Knight:{hp:160, atk:14, range:22, speed:90, melee:true, icon:'🐴'},
+    Defender:{hp:200, atk:10, range:22, speed:60, melee:true, icon:'🛡️'},
+    Ranger:{hp:90, atk:11, range:120, speed:78, icon:'🌲'},
+    Sapper:{hp:70, atk:28, range:18, speed:88, melee:true, icon:'💣'},
+    Berserker:{hp:150, atk:16, range:22, speed:78, melee:true, icon:'🪓'},
+    Paladin:{hp:180, atk:14, range:24, speed:80, melee:true, icon:'✝️'},
+    Warchanter:{hp:130, atk:10, range:80, speed:82, icon:'🥁'},
+    Caravan:{hp:100, atk:0, range:0, speed:60, civilian:true, icon:'🛻'},
+    Raider:{hp:90, atk:10, range:18, speed:74, enemy:true, melee:true, icon:'☠️'},
+  };
+
+  const Techs = [
+    {id:'agri', name:'Agriculture', req:[], cost:{wood:60}, time:6000, grants:['Farm']},
+    {id:'mining', name:'Mining', req:[], cost:{wood:40}, time:6000, grants:['Mine','Worker']},
+    {id:'craft', name:'Crafting', req:['mining'], cost:{wood:80, crystal:20}, time:7000, grants:['Workshop']},
+    {id:'mil', name:'Military Drill', req:['mining'], cost:{wood:90,gold:40}, time:7000, grants:['Barracks','Soldier']},
+    {id:'arch', name:'Archery', req:['mil'], cost:{wood:100}, time:8000, grants:['Archery','Archer']},
+    {id:'sorc', name:'Sorcery', req:['craft'], cost:{crystal:120}, time:9000, grants:['MageTower','Mage']},
+    {id:'trade', name:'Trade Routes', req:['craft'], cost:{gold:120}, time:8000, grants:['Market','Caravan']},
+    {id:'dip', name:'Diplomacy', req:['trade'], cost:{gold:100, wood:80}, time:8000, grants:['Embassy']},
+    {id:'theo', name:'Theology', req:[], cost:{wood:60, crystal:40}, time:7000, grants:['Shrine']},
+    {id:'arts', name:'Arts & Theatre', req:['theo'], cost:{wood:120, gold:100}, time:9000, grants:['Theater']},
+    {id:'edu', name:'Education', req:['craft'], cost:{wood:80, crystal:80}, time:8000, grants:['Library']},
+    {id:'master', name:'Masterwork Engineering', req:['edu','craft'], cost:{wood:140, crystal:120, gold:100}, time:12000, grants:[]},
+    {id:'grand', name:'Grand Invention', req:['master'], cost:{wood:180, crystal:180, gold:180}, time:20000, grants:['TECH_VICTORY']},
+  ];
+
+  // ========= State =========
+  const state = {
+    time:0, paused:false,
+    faction:null, mods:{},
+    res:{wood:0, crystal:0, gold:0},
+    pop:0, cap:0,
+    vp:{culture:0, tech:0, dip:0, trade:0, war:0},
+    tech:{researched:new Set(), inProgress:null, progress:0},
+    buildings:[], units:[], resources:[], projectiles:[],
+    selection:[], attackMode:false, rallyToHero:false,
+    enemyCamps:[],
+  };
+
+  // ========= SVG Init =========
+  const svg = $$('#game');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const svgns = 'http://www.w3.org/2000/svg';
+  const gTerrain = svg.appendChild(el('g'));
+  const gRes = svg.appendChild(el('g'));
+  const gBuild = svg.appendChild(el('g'));
+  const gUnits = svg.appendChild(el('g'));
+  const gFX = svg.appendChild(el('g'));
+
+  function el(tag, attrs={}){const e=document.createElementNS(svgns, tag);for(const k in attrs)e.setAttribute(k, attrs[k]);return e;}
+
+  // Background tiles
+  function drawGround(){
+    const defs = el('defs');
+    const grad = el('linearGradient', {id:'grassgrad', x1:'0%', y1:'0%', x2:'0%', y2:'100%'});
+    grad.append(el('stop',{offset:'0%','stop-color':'#24472a'}));
+    grad.append(el('stop',{offset:'100%','stop-color':'#1b3520'}));
+    defs.append(grad);
+    svg.prepend(defs);
+
+    for(let y=0;y<GRID_H;y++){
+      for(let x=0;x<GRID_W;x++){
+        const c = ((x+y)%2===0)?'url(#grassgrad)':'#203c26';
+        const r = el('rect',{x:x*TILE,y:y*TILE,width:TILE,height:TILE,fill:c,stroke:'#18261b', 'stroke-width':0.5});
+        gTerrain.append(r);
+      }
+    }
+  }
+
+  // ========= Map Generation =========
+  const grid = Array.from({length:GRID_H},()=>Array(GRID_W).fill(0)); // 0 empty, 1 obstacle/building
+  function inBounds(tx,ty){return tx>=0&&ty>=0&&tx<GRID_W&&ty<GRID_H}
+  function occ(tx,ty){return grid[ty]?.[tx]===1}
+  function occupyRect(tx,ty,w,h,val=1){for(let y=ty;y<ty+h;y++)for(let x=tx;x<tx+w;x++) if(inBounds(x,y)) grid[y][x]=val}
+
+  function spawnResources(){
+    // Trees
+    for(let i=0;i<220;i++) addResource('tree', randi(2,GRID_W-2), randi(2,GRID_H-2));
+    // Crystals
+    for(let i=0;i<28;i++) addResource('crystal', randi(2,GRID_W-2), randi(2,GRID_H-2));
+    // Gold
+    for(let i=0;i<20;i++) addResource('gold', randi(2,GRID_W-2), randi(2,GRID_H-2));
+  }
+
+  function resourceShape(kind, x, y){
+    const gx=x*TILE+TILE/2, gy=y*TILE+TILE/2;
+    if(kind==='tree'){
+      const g = el('g');
+      const trunk = el('rect',{x:gx-4,y:gy+4,width:8,height:14,fill:'#6b3f1d'});
+      const can1 = el('circle',{cx:gx,cy:gy-2,r:14,fill:'#2f6f3a'});
+      const can2 = el('circle',{cx:gx-10,cy:gy+4,r:10,fill:'#2b6133'});
+      const can3 = el('circle',{cx:gx+10,cy:gy+4,r:10,fill:'#2b6133'});
+      g.append(can1,can2,can3,trunk); return g;
+    }
+    if(kind==='crystal'){
+      const g=el('g');
+      const p = el('polygon',{points:`${gx},${gy-16} ${gx+10},${gy+4} ${gx},${gy+16} ${gx-10},${gy+4}`, fill:'#45c6ff', stroke:'#142a35'});
+      const shine = el('circle',{cx:gx-2,cy:gy-6,r:2,fill:'#e0f7ff'});
+      g.append(p,shine); return g;
+    }
+    if(kind==='gold'){
+      const g=el('g');
+      const b = el('rect',{x:gx-14,y:gy-10,width:28,height:20,rx:4,fill:'#c8a54b',stroke:'#2a220f'});
+      const bar = el('rect',{x:gx-8,y:gy-6,width:16,height:12,rx:2,fill:'#e7c45a'});
+      g.append(b,bar); return g;
+    }
+  }
+
+  function addResource(kind, tx, ty){
+    if(!inBounds(tx,ty) || occ(tx,ty)) return;
+    if(kind!=='tree'){ // keep sparse for mines/crystals
+      if([...neighbors(tx,ty)].some(([nx,ny])=>occ(nx,ny))) return;
+    }
+    const id = `res-${state.resources.length+1}`;
+    const g = resourceShape(kind, tx, ty); g.setAttribute('data-id', id);
+    gRes.append(g);
+    state.resources.push({id, kind, tx, ty, amount: kind==='tree'?120: (kind==='crystal'?200:240)});
+    // Mark trees as not blocking but gold/crystal do block slightly
+    if(kind!=='tree') grid[ty][tx]=1;
+  }
+
+  function neighbors(x,y){
+    return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=>inBounds(a,b));
+  }
+
+  // ========= Entities =========
+  function addBuilding(type, tx, ty, team='player'){
+    const cfg = Buildings[type];
+    const size = cfg.size||1;
+    // check space
+    for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(occ(tx+x,ty+y)) return null;
+    occupyRect(tx,ty,size,size,1);
+    const id = `b-${state.buildings.length+1}`;
+    const gx = tx*TILE, gy = ty*TILE;
+    const group = el('g',{'data-id':id});
+    const body = el('rect',{x:gx+2,y:gy+2,width:TILE*size-4,height:TILE*size-4,rx:6,fill:'#2a3548',stroke:'#1f2937'});
+    const roof = el('path',{d:`M ${gx+4} ${gy+TILE*size-4} L ${gx+TILE*size/2} ${gy+4} L ${gx+TILE*size-4} ${gy+TILE*size-4} Z`, fill:'#3b4b69'});
+    group.append(body, roof);
+    const label = el('text',{x:gx+TILE*size/2,y:gy+TILE*size/2+6,'text-anchor':'middle', fill:'#cbd5e1', 'font-size':12});
+    label.textContent = cfg.name.split(' ')[0];
+    group.append(label);
+
+    gBuild.append(group);
+    const b = {id, type, tx, ty, size, team, hp: 300 + size*100, prodQueue:[], progress:0, 
+      rally:{x:gx+TILE*size+20, y:gy+TILE*size+20}};
+    state.buildings.push(b);
+
+    // Effects
+    if(cfg.effects?.cap){ state.cap += cfg.effects.cap; }
+    if(cfg.effects?.culture){ b.cultureRate = cfg.effects.culture; }
+    if(cfg.effects?.research){ b.researchRate = cfg.effects.research; }
+    if(cfg.effects?.dip){ b.dipRate = cfg.effects.dip; }
+
+    if(type==='TownHall'){ state.townhall = b; }
+
+    // Click handling
+    group.addEventListener('click', e=>{
+      e.stopPropagation(); select(b);
+      showProduction(b);
+    });
+
+    return b;
+  }
+
+  function unitColor(u){ return u.team==='player'? '#7dd3fc' : '#ef4444'; }
+
+  function addUnit(type, x, y, team='player'){
+    const cfg = unitConfig(type);
+    const id = `u-${state.units.length+1}`;
+    const g = el('g',{'data-id':id});
+    const body = el('circle',{cx:x, cy:y, r:10, fill:'#0b1220', stroke:unitColor({team}), 'stroke-width':2});
+    const icon = el('text',{x:x,y:y+4,'text-anchor':'middle','font-size':12, fill:'#e5e7eb'});
+    icon.textContent = cfg.icon || '●';
+    g.append(body, icon);
+    gUnits.append(g);
+
+    const u = {id,type,team,x,y,tx:Math.floor(x/TILE),ty:Math.floor(y/TILE), hp:cfg.hp, atk:cfg.atk, range:cfg.range, speed:cfg.speed,
+               target:null, path:[], carry:0, carryType:null, gather:!!cfg.gather, melee:!!cfg.melee, civilian:!!cfg.civilian,
+               cooldown:0, selected:false, icon, body, aggro:false};
+    g.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSelect(u, e.shiftKey); });
+    state.units.push(u);
+    return u;
+  }
+
+  function unitConfig(type){
+    const base = JSON.parse(JSON.stringify(Units[type]||Units.Worker));
+    const m = state.mods||{};
+    if(base.speed) base.speed *= (m.move||1);
+    if(base.melee) base.atk = Math.round(base.atk * (m.melee||1));
+    return base;
+  }
+
+  function spawnEnemyCamp(idx){
+    const corners = [ [2,2], [GRID_W-6,2], [2,GRID_H-6] ];
+    const [tx,ty] = corners[idx];
+    const b = addBuilding('Barracks', tx, ty, 'enemy');
+    if(!b) return; b.team='enemy';
+    const g = gBuild.querySelector(`[data-id="${b.id}"]`);
+    if(g) g.querySelector('rect').setAttribute('stroke','#4b1f1f');
+    state.enemyCamps.push(b);
+  }
+
+  // ========= Selection & UI =========
+  function clearSelection(){ state.selection.forEach(s=>s.selected=false); state.selection=[]; paintSelection(); }
+  function select(obj){ clearSelection(); obj.selected=true; state.selection=[obj]; paintSelection(); }
+  function toggleSelect(obj, add){ if(!add) clearSelection(); obj.selected=!obj.selected; if(obj.selected) state.selection.push(obj); else state.selection=state.selection.filter(o=>o!==obj); paintSelection(); }
+  function paintSelection(){
+    // Units
+    state.units.forEach(u=>{
+      u.body.setAttribute('stroke', u.selected? '#fef08a' : unitColor(u));
+    });
+  }
+
+  svg.addEventListener('click', (e)=>{
+    if(e.target===svg) clearSelection();
+  });
+
+  svg.addEventListener('contextmenu', e=>{
+    e.preventDefault();
+    const pt = clientToSVG(e.clientX, e.clientY);
+    if(state.attackMode){ issueAttackMove(pt.x, pt.y); state.attackMode=false; $$('#cmd-attack').classList.remove('active'); return; }
+    moveSelected(pt.x, pt.y);
+  });
+
+  function clientToSVG(cx,cy){
+    const pt = svg.createSVGPoint(); pt.x=cx; pt.y=cy; const out = pt.matrixTransform(svg.getScreenCTM().inverse()); return {x:out.x,y:out.y};
+  }
+
+  function moveSelected(x,y){ state.selection.filter(o=>o.type && Units[o.type]).forEach(u=>{ u.target={x,y}; u.path = findPath(u.x,u.y,x,y); }); }
+  function issueAttackMove(x,y){ state.selection.filter(o=>o.type && Units[o.type]).forEach(u=>{ u.aggro=true; u.target={x,y}; u.path = findPath(u.x,u.y,x,y); }); }
+
+  // ========= Production UI =========
+  function showProduction(b){
+    const box = $$('#prod'); box.innerHTML='';
+    const cfg = Buildings[b.type]; if(!cfg) return;
+    const list = cfg.prod||[];
+    list.forEach(p=>{
+      const div=document.createElement('div'); div.className='build-card';
+      const uc = unitConfig(p.unit);
+      const cost = unitCost(p.unit);
+      div.innerHTML=`<div class="title">${p.unit}</div>
+        <div class="cost">⏱ ${(p.time/1000).toFixed(1)}s • 🪙 ${cost.gold||0} • 🪵 ${cost.wood||0} • 🔷 ${cost.crystal||0}</div>`;
+      div.addEventListener('click', ()=>queueUnit(b, p.unit, p.time));
+      box.append(div);
+    });
+  }
+
+  function unitCost(type){
+    const base = { Worker:{wood:40}, Soldier:{wood:60,gold:20}, Archer:{wood:70}, Mage:{crystal:60, wood:30}, Caravan:{gold:60},
+      Knight:{gold:80, wood:40}, Defender:{wood:60, gold:40}, Ranger:{wood:80, crystal:20}, Sapper:{wood:30, gold:20}, Berserker:{wood:70, gold:30}, Paladin:{gold:90, crystal:30}, Warchanter:{wood:60, gold:40} }[type]||{};
+    const m = state.mods.unitCost || 1;
+    const out = {}; for(const k in base) out[k]=Math.round(base[k]*m);
+    return out;
+  }
+
+  function canAfford(cost){ for(const k in cost){ if((state.res[k]||0) < cost[k]) return false; } return true; }
+  function pay(cost){ for(const k in cost){ state.res[k]-=cost[k]; } }
+
+  function queueUnit(b, type, time){
+    const cost = unitCost(type);
+    if(!canAfford(cost)){ log(`Not enough resources for ${type}.`); return; }
+    if(state.pop>=state.cap){ log('Population cap reached. Build Houses/Farms.'); return; }
+    pay(cost);
+    b.prodQueue.push({type, remain:time});
+    log(`${Buildings[b.type].name} queued ${type}.`);
+  }
+
+  // ========= Build Menu =========
+  function refreshBuildMenu(){
+    const grid=$$('#build-grid'); grid.innerHTML='';
+    const allowed = allowedBuildings();
+    Object.keys(Buildings).forEach(key=>{
+      const b = Buildings[key];
+      // TownHall only if none
+      if(b.unique && state.buildings.some(x=>x.type==='TownHall')) return;
+      const granted = b.unique? true : allowed.includes(key);
+      const card=document.createElement('div'); card.className='build-card'; card.style.opacity= granted?1:.55; card.title=b.desc;
+      const cost = resStr(b.cost);
+      card.innerHTML = `<div class="title">${b.name} ${b.unique?'(Unique)':''}</div>
+        <div class="cost">${cost}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${tagsFor(key).map(t=>`<span class='tag'>${t}</span>`).join('')}</div>`;
+      card.addEventListener('click', ()=>{
+        if(!granted){ log('Tech required for this building.'); return; }
+        startPlacing(key);
+      });
+      grid.append(card);
+    });
+  }
+
+  function tagsFor(key){
+    return {
+      TownHall:['Deposit','Unique','Politics'],
+      House:['Population'], LumberCamp:['Wood'], Mine:['Mining'], Farm:['Population'],
+      Barracks:['Military'], Archery:['Ranged'], MageTower:['Magic'], Market:['Trade','Caravans'],
+      Embassy:['Politics'], Shrine:['Culture'], Theater:['Culture'], Library:['Research'], Workshop:['Engineering']
+    }[key]||[];
+  }
+
+  function resStr(cost){ if(!cost) return '—'; return `🪵 ${cost.wood||0} 🔷 ${cost.crystal||0} 🪙 ${cost.gold||0}`; }
+
+  function allowedBuildings(){
+    const have = state.tech.researched;
+    const grants = new Set(['TownHall','House','LumberCamp']);
+    Techs.forEach(t=>{ if(have.has(t.id)) (t.grants||[]).forEach(g=>{ if(Buildings[g]) grants.add(g); }); });
+    return Array.from(grants);
+  }
+
+  let placing=null, placeGhost=null;
+  function startPlacing(type){ placing=type; svg.style.cursor='crosshair'; if(placeGhost) placeGhost.remove(); placeGhost=el('rect',{width:Buildings[type].size*TILE,height:Buildings[type].size*TILE,fill:'rgba(125,211,252,.2)',stroke:'#7dd3fc','stroke-dasharray':'4 4'}); gFX.append(placeGhost); }
+
+  svg.addEventListener('mousemove', e=>{
+    if(!placing||!placeGhost) return; const pt=clientToSVG(e.clientX,e.clientY); const tx=Math.floor(pt.x/TILE), ty=Math.floor(pt.y/TILE);
+    placeGhost.setAttribute('x', tx*TILE); placeGhost.setAttribute('y', ty*TILE);
+    // color red if blocked
+    const size=Buildings[placing].size||1; let ok=true; for(let y=0;y<size;y++) for(let x=0;x<size;x++) if(occ(tx+x,ty+y)) ok=false; 
+    placeGhost.setAttribute('fill', ok? 'rgba(52,211,153,.18)':'rgba(239,68,68,.18)');
+  });
+
+  svg.addEventListener('click', e=>{
+    if(!placing) return; e.stopPropagation(); const pt=clientToSVG(e.clientX,e.clientY); const tx=Math.floor(pt.x/TILE), ty=Math.floor(pt.y/TILE);
+    const bcfg=Buildings[placing];
+    if(!canAfford(bcfg.cost||{})){ log('Not enough resources to build '+bcfg.name); return; }
+    const b=addBuilding(placing, tx, ty, 'player');
+    if(b){ pay(bcfg.cost||{}); log('Built '+bcfg.name); placing=null; svg.style.cursor='default'; if(placeGhost){ placeGhost.remove(); placeGhost=null; } refreshBuildMenu(); }
+  });
+
+  // ========= Tech Panel =========
+  function refreshTechList(){
+    const wrap=$$('#tech-list'); wrap.innerHTML='';
+    const researched=state.tech.researched;
+    Techs.forEach(t=>{
+      const reqOK = t.req.every(r=>researched.has(r));
+      const div=document.createElement('div'); div.className='tech '+(reqOK? '' : 'locked');
+      div.innerHTML=`<div>
+        <div style="font-weight:700">${t.name}</div>
+        <div class="cost">Req: ${t.req.length? t.req.join(', ') : '—'} • Cost ${resStr(t.cost)} • ⏱ ${(t.time/1000).toFixed(1)}s</div>
+      </div>
+      <div><button class="btn" ${reqOK? '' : 'disabled'}>Research</button></div>`;
+      const btn=div.querySelector('button');
+      btn.addEventListener('click',()=>startResearch(t));
+      wrap.append(div);
+    });
+  }
+
+  function startResearch(t){
+    if(state.tech.inProgress){ log('Research already in progress.'); return; }
+    if(!t.req.every(r=>state.tech.researched.has(r))){ log('Missing prerequisites.'); return; }
+    if(!canAfford(t.cost||{})){ log('Not enough resources.'); return; }
+    pay(t.cost||{});
+    state.tech.inProgress = t; state.tech.progress = 0; log('Researching '+t.name);
+  }
+
+  function completeResearch(t){
+    state.tech.researched.add(t.id); state.tech.inProgress=null; state.tech.progress=0; 
+    state.vp.tech += (t.id==='grand'?1:0);
+    if(t.grants?.includes('TECH_VICTORY')) checkVictory('tech');
+    refreshBuildMenu(); refreshTechList();
+    log('Completed research: '+t.name);
+  }
+
+  // ========= Enemy AI =========
+  function enemyAI(dt){
+    // Spawn raiders from each camp periodically
+    if(state.time%5000<dt){ // every ~5s
+      state.enemyCamps.forEach(c=>{
+        if(!c._alive) return; const sx=c.tx*TILE + c.size*TILE/2, sy=c.ty*TILE + c.size*TILE/2;
+        const u=addUnit('Raider', sx+rand(-10,10), sy+rand(-10,10), 'enemy');
+        const target = state.townhall? {x: state.townhall.tx*TILE + TILE, y: state.townhall.ty*TILE + TILE} : {x:W/2,y:H/2};
+        u.target = target; u.path = findPath(u.x,u.y,target.x,target.y); u.aggro=true;
+      });
+    }
+  }
+
+  // ========= Pathfinding (A*) =========
+  function nodeKey(x,y){return x+','+y}
+  function heuristic(ax,ay,bx,by){return Math.abs(ax-bx)+Math.abs(ay-by)}
+  function findPath(sx,sy,ex,ey){
+    const s = [Math.floor(sx/TILE), Math.floor(sy/TILE)];
+    const e = [Math.floor(ex/TILE), Math.floor(ey/TILE)];
+    const open=new Set([nodeKey(...s)]), came={}, g={}, f={};
+    g[nodeKey(...s)]=0; f[nodeKey(...s)]=heuristic(...s,...e);
+    const inOpen=(k)=>open.has(k);
+    while(open.size){
+      let current=null, best=1e9; for(const k of open){ if((f[k]??1e9)<best){best=f[k]; current=k;} }
+      const [cx,cy]=current.split(',').map(Number);
+      if(cx===e[0]&&cy===e[1]){
+        // reconstruct
+        let path=[]; let ck=current; while(ck!==nodeKey(...s)){ const [px,py]=ck.split(',').map(Number); path.unshift({x:px*TILE+TILE/2, y:py*TILE+TILE/2}); ck=came[ck]; }
+        return path;
+      }
+      open.delete(current);
+      for(const [nx,ny] of neighbors(cx,cy)){
+        if(occ(nx,ny)) continue; // blocked
+        const nk=nodeKey(nx,ny); const tentative=(g[current]??1e9)+1;
+        if(tentative < (g[nk]??1e9)){
+          came[nk]=current; g[nk]=tentative; f[nk]=tentative + heuristic(nx,ny,...e);
+          if(!inOpen(nk)) open.add(nk);
+        }
+      }
+    }
+    return [];
+  }
+
+  // ========= Game Loop =========
+  let last=performance.now();
+  function tick(now){
+    if(!state.paused){
+      const dt = Math.min(50, now-last); state.time += dt;
+      update(dt); drawMiniMap();
+    }
+    last=now; requestAnimationFrame(tick);
+  }
+
+  function update(dt){
+    // Units movement and combat
+    state.units.forEach(u=>{
+      if(u.hp<=0) return;
+      // Aggro logic
+      if(u.aggro && !u.target){
+        const enemy = nearestEnemy(u.x,u.y);
+        if(enemy) { u.target={x:enemy.x,y:enemy.y, entity:enemy}; u.path = findPath(u.x,u.y,enemy.x,enemy.y); }
+      }
+      // Combat if enemy in range
+      const foe = nearbyEnemy(u.x,u.y, u.team, u.range||24);
+      if(foe){ if((u.cooldown-=dt)<=0 && (u.atk||0)>0){
+        foe.hp -= u.atk; u.cooldown = 800; spawnHit(foe.x,foe.y);
+        if(foe.hp<=0) killEntity(foe);
+      } return; }
+
+      // Move along path
+      if(u.path && u.path.length){
+        const tgt = u.path[0];
+        const dx=tgt.x-u.x, dy=tgt.y-u.y; const dist = Math.hypot(dx,dy);
+        const sp = (u.speed||60) * dt/1000;
+        if(dist<=sp){ u.x=tgt.x; u.y=tgt.y; u.path.shift(); }
+        else { u.x += dx/dist*sp; u.y += dy/dist*sp; }
+        u.tx = Math.floor(u.x/TILE); u.ty = Math.floor(u.y/TILE);
+        u.body.setAttribute('cx', u.x); u.body.setAttribute('cy', u.y);
+        u.icon.setAttribute('x', u.x); u.icon.setAttribute('y', u.y+4);
+      }
+
+      // Gathering (simple: if selected resource saved in target.entity)
+      if(u.gather && u.target && u.target.entity && u.target.entity.kind && distance(u, u.target.entity)<18){
+        const rn = u.target.entity; const rate = gatherRate(rn.kind) * dt/1000; if(rn.amount>0){ rn.amount -= rate; u.carry += rate; u.carryType = mapRes(rn.kind); }
+        if(u.carry>= (unitConfig(u.type).carry||10) || rn.amount<=0){
+          // go deposit
+          const th = state.townhall; if(th){ const dx=th.tx*TILE+TILE, dy=th.ty*TILE+TILE; u.path = findPath(u.x,u.y,dx,dy); u.target={x:dx,y:dy, deposit:true}; }
+        }
+      }
+
+      // Deposit when at TownHall
+      if(u.target && u.target.deposit && state.townhall){
+        const dx=state.townhall.tx*TILE+TILE, dy=state.townhall.ty*TILE+TILE; if(Math.hypot(u.x-dx,u.y-dy)<18){
+          if(u.carryType){ state.res[u.carryType]+=Math.round(u.carry); updateTopbar(); }
+          u.carry=0; u.carryType=null; u.target=null; u.path=[];
+        }
+      }
+    });
+
+    // Building production & passive yields
+    state.buildings.forEach(b=>{
+      if(b.hp<=0) return;
+      if(b.cultureRate) state.vp.culture += b.cultureRate * dt/60000; // per minute
+      if(b.dipRate) state.vp.dip += b.dipRate * dt/60000;
+    });
+
+    // Research progress
+    if(state.tech.inProgress){
+      const rate = 1 + state.buildings.filter(b=>b.researchRate).reduce((a,b)=>a+b.researchRate,0);
+      state.tech.progress += dt*rate;
+      const t = state.tech.inProgress; if(state.tech.progress>=t.time){ completeResearch(t); }
+    }
+
+    // Production
+    state.buildings.forEach(b=>{
+      if(!b.prodQueue.length) return; const job=b.prodQueue[0]; job.remain -= dt; if(job.remain<=0){
+        // spawn at building edge
+        const x=b.tx*TILE + b.size*TILE + 8, y=b.ty*TILE + b.size*TILE/2;
+        const u=addUnit(job.type, x, y, 'player'); state.pop++; updateTopbar();
+        if(state.rallyToHero && state.hero){ u.path=findPath(u.x,u.y,state.hero.x,state.hero.y); u.target={x:state.hero.x,y:state.hero.y}; }
+        b.prodQueue.shift();
+      }
+    });
+
+    // Enemy AI
+    enemyAI(dt);
+
+    // Victory passive from trade: each 100 gold earned adds trade points slowly
+    // Here we simply convert current gold to trade points over time if Market exists
+    if(state.buildings.some(b=>b.type==='Market')){
+      state.vp.trade += dt/1000 * 0.5; // slow passive
+    }
+
+    // UI updates
+    updatePanels();
+    checkAllVictories();
+  }
+
+  function distance(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+  function mapRes(kind){ return kind==='tree'? 'wood' : (kind==='crystal'? 'crystal' : 'gold'); }
+  function gatherRate(kind){
+    const m=state.mods; if(kind==='tree') return 5*(m.woodRate||1); if(kind==='crystal') return 4*(m.crystalRate||1); if(kind==='gold') return 4*(m.mineRate||1)*(m.goldRate||1); return 3;
+  }
+
+  function nearestEnemy(x,y){ let best=null, bd=1e9; state.units.forEach(u=>{ if(u.team==='enemy' && u.hp>0){ const d=Math.hypot(x-u.x,y-u.y); if(d<bd){bd=d; best=u;} } }); return best; }
+  function nearbyEnemy(x,y,team,range){ let foe=null, r2=range*range; state.units.forEach(u=>{ if(u.team!==team && u.hp>0){ const dx=x-u.x, dy=y-u.y; if(dx*dx+dy*dy<=r2) foe=u; } }); return foe; }
+  function spawnHit(x,y){ const p=el('circle',{cx:x,cy:y,r:2,fill:'#fca5a5'}); gFX.append(p); setTimeout(()=>p.remove(), 250); }
+
+  function killEntity(e){
+    if(e.id?.startsWith('u-')){
+      // remove unit
+      const idx=state.units.indexOf(e); if(idx>=0){ state.units.splice(idx,1); state.pop=Math.max(0, state.pop - (e.team==='player'?1:0)); updateTopbar(); }
+      const g=gUnits.querySelector(`[data-id="${e.id}"]`); if(g) g.remove();
+      if(e.team==='enemy') state.vp.war += 0.25;
+    }else if(e.id?.startsWith('b-')){
+      const idx=state.buildings.indexOf(e); if(idx>=0){ state.buildings.splice(idx,1); }
+      const g=gBuild.querySelector(`[data-id="${e.id}"]`); if(g) g.remove();
+      e._alive=false;
+      if(state.enemyCamps.includes(e)){ state.vp.war += 1; log('Enemy camp destroyed!'); }
+    }
+  }
+
+  // ========= Panels =========
+  function updateTopbar(){
+    $$('#res-wood').textContent = Math.floor(state.res.wood);
+    $$('#res-crystal').textContent = Math.floor(state.res.crystal);
+    $$('#res-gold').textContent = Math.floor(state.res.gold);
+    $$('#res-pop').textContent = Math.floor(state.pop);
+    $$('#res-cap').textContent = Math.floor(state.cap);
+  }
+
+  function updatePanels(){
+    $$('#vp-culture').textContent = Math.floor(state.vp.culture);
+    $$('#vp-tech').textContent = Math.floor(state.vp.tech);
+    $$('#vp-dip').textContent = Math.floor(state.vp.dip);
+    $$('#vp-trade').textContent = Math.floor(state.vp.trade);
+    $$('#vp-war').textContent = Math.floor(state.vp.war);
+
+    // Research progress bar (inline rebuild minimal)
+    const t = state.tech.inProgress; const list=$$('#tech-list'); if(t){
+      let row = Array.from(list.children).find(div=>div.querySelector('div').textContent.includes(t.name));
+      if(row){
+        let p = row.querySelector('.progress'); if(!p){ p=document.createElement('div'); p.className='progress'; p.innerHTML='<div></div>'; row.append(p); }
+        const pct = clamp(state.tech.progress / t.time, 0, 1)*100; p.firstElementChild.style.width = pct+'%';
+      }
+    }
+
+    // Victory panel numbers
+    const vp=$$('#victory-progress'); if(vp){
+      vp.innerHTML = ['culture','tech','dip','trade','war'].map(k=>{
+        const cur = Math.floor(state.vp[k]); const tgt = VICTORY_TARGETS[k];
+        return `<div class='tech'><div><b>${k.toUpperCase()}</b> ${cur} / ${tgt}</div><div class='progress'><div style='width:${Math.min(100, cur/tgt*100)}%'></div></div></div>`;
+      }).join('');
+    }
+  }
+
+  // ========= Minimap =========
+  const mini=$$('#minimap'); const mctx=mini.getContext('2d');
+  function drawMiniMap(){
+    const w=mini.width, h=mini.height; mctx.fillStyle='#0a0f17'; mctx.fillRect(0,0,w,h);
+    // draw resources
+    state.resources.forEach(r=>{ if(r.amount<=0) return; const x=r.tx/GRID_W*w, y=r.ty/GRID_H*h; mctx.fillStyle= r.kind==='tree'? '#3a7a45' : (r.kind==='crystal'? '#45c6ff' : '#c8a54b'); mctx.fillRect(x,y,2,2); });
+    // buildings
+    state.buildings.forEach(b=>{ const x=b.tx/GRID_W*w, y=b.ty/GRID_H*h; mctx.fillStyle= b.team==='player'? '#7dd3fc' : '#ef4444'; mctx.fillRect(x,y,4,4); });
+    // units
+    state.units.forEach(u=>{ const x=u.x/W*w, y=u.y/H*h; mctx.fillStyle= u.team==='player'? '#a78bfa' : '#f87171'; mctx.fillRect(x,y,2,2); });
+  }
+
+  // ========= Tabs =========
+  $$('.tabbar').addEventListener('click', (e)=>{
+    const t=e.target.closest('.tab'); if(!t) return; $$$('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+    $$$('.tabpage').forEach(p=>p.style.display='none');
+    if(t.dataset.tab==='tech') $$('#tab-tech').style.display='block'; else $$('#tab-victory').style.display='block';
+  });
+
+  // ========= Tooltips =========
+  const tip=$$('#tip');
+  document.addEventListener('mousemove', e=>{ if(tip.style.display==='block'){ tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+14)+'px'; } });
+  function showTip(html){ tip.innerHTML=html; tip.style.display='block'; }
+  function hideTip(){ tip.style.display='none'; }
+
+  // ========= Input Buttons =========
+  $$('#btn-pause').addEventListener('click', ()=>{ state.paused=!state.paused; $$('#btn-pause').textContent = state.paused? '▶️ Resume' : '⏸️ Pause'; });
+  $$('#btn-help').addEventListener('click', ()=> alert('Controls\n• Left click: select / order\n• Right click: move / attack‑move (when Attack mode active)\n• 1: Hero, 2: Workers, 3: Army\n• B: Build mode, T: Tech panel, H: Help\n\nGoal: Any victory condition. Resources must be deposited at the Town Hall.'));
+  $$('#cmd-select-hero').addEventListener('click', ()=> selectHero());
+  $$('#cmd-all-workers').addEventListener('click', ()=> selectGroup(u=>u.type==='Worker'&&u.team==='player'));
+  $$('#cmd-all-military').addEventListener('click', ()=> selectGroup(u=>!u.civilian && !u.gather && u.team==='player'));
+  $$('#cmd-attack').addEventListener('click', (e)=>{ state.attackMode=!state.attackMode; e.currentTarget.classList.toggle('active', state.attackMode); });
+  $$('#cmd-rally').addEventListener('click', (e)=>{ state.rallyToHero=!state.rallyToHero; e.currentTarget.classList.toggle('active', state.rallyToHero); });
+
+  document.addEventListener('keydown', e=>{
+    if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA') return;
+    if(e.key==='1') selectHero();
+    if(e.key==='2') selectGroup(u=>u.type==='Worker'&&u.team==='player');
+    if(e.key==='3') selectGroup(u=>!u.civilian && !u.gather && u.team==='player');
+    if(e.key.toLowerCase()==='b') refreshBuildMenu(); $$('#left').scrollTo({top:0,behavior:'smooth'});
+    if(e.key.toLowerCase()==='t'){ $$$('.tab')[0].click(); }
+    if(e.key.toLowerCase()==='h'){ $$('#btn-help').click(); }
+  });
+
+  function selectHero(){ const h=state.hero; if(h){ select(h); } }
+  function selectGroup(pred){ clearSelection(); state.units.filter(pred).forEach(u=>toggleSelect(u,true)); }
+
+  // ========= Start Screen (Factions) =========
+  function buildFactionChoices(){
+    const cont=$$('#fac-choices'); cont.innerHTML='';
+    for(const [name, f] of Object.entries(FACTIONS)){
+      const card=document.createElement('div'); card.className='fac';
+      card.innerHTML=`<h4>${name}</h4><div style='color:var(--muted);font-size:13px'>${f.desc}</div>`;
+      card.addEventListener('mouseenter',()=>showTip(`<b>${name}</b><br/>${f.desc}`));
+      card.addEventListener('mouseleave',hideTip);
+      card.addEventListener('click',()=>startGame(name));
+      cont.append(card);
+    }
+  }
+
+  $$('#btn-random').addEventListener('click', ()=>{
+    const keys=Object.keys(FACTIONS); const k=keys[randi(0,keys.length)]; startGame(k);
+  });
+
+  // ========= Game Start =========
+  function startGame(factionName){
+    $$('#start').style.display='none';
+    state.faction=factionName; state.mods=FACTIONS[factionName].mods||{};
+    drawGround(); spawnResources();
+
+    // Player start area
+    const sx= Math.floor(GRID_W/2-2), sy=Math.floor(GRID_H/2-2);
+    const th = addBuilding('TownHall', sx, sy, 'player');
+    state.cap += 5; // initial cap bump
+    addBuilding('House', sx+3, sy+2, 'player');
+    // Starting resources
+    state.res.wood=200; state.res.crystal=80; state.res.gold=120; updateTopbar();
+
+    // Hero & Workers
+    const hx = th.tx*TILE + TILE; const hy = th.ty*TILE + TILE;
+    const hero = addUnit('Hero', hx+20, hy, 'player'); state.hero=hero; select(hero);
+    for(let i=0;i<3;i++){ addUnit('Worker', hx + rand(-40,40), hy + rand(-40,40), 'player'); state.pop++; }
+    updateTopbar();
+
+    // Enemy
+    spawnEnemyCamp(0); spawnEnemyCamp(1); spawnEnemyCamp(2);
+
+    // UI
+    refreshBuildMenu(); refreshTechList();
+
+    // Pre-research freebies
+    state.tech.researched.add('agri'); state.tech.researched.add('theo'); // early variety
+    refreshTechList(); refreshBuildMenu();
+
+    log(`Founded a ${factionName} settlement.`);
+    requestAnimationFrame(tick);
+  }
+
+  // ========= Combat clicks on units/buildings =========
+  svg.addEventListener('mousedown', e=>{
+    const pt=clientToSVG(e.clientX,e.clientY);
+    const enemy = pickEntity(pt.x, pt.y, 'enemy');
+    if(enemy && state.selection.length){
+      state.selection.forEach(u=>{ if(Units[u.type]){ u.target={x:enemy.x||enemy.tx*TILE+TILE/2, y:enemy.y||enemy.ty*TILE+TILE/2, entity:enemy}; u.path=findPath(u.x,u.y,u.target.x,u.target.y); u.aggro=true; }});
+    }
+    // Gathering: if clicked resource and a worker/hero selected
+    const resNode = pickResource(pt.x, pt.y);
+    if(resNode && state.selection.some(u=>u.gather)){
+      state.selection.filter(u=>u.gather).forEach(u=>{ u.target={x:resNode.tx*TILE+TILE/2, y:resNode.ty*TILE+TILE/2, entity:resNode}; u.path=findPath(u.x,u.y,u.target.x,u.target.y); });
+      log('Assigned to gather '+resNode.kind);
+    }
+  });
+
+  function pickEntity(x,y, team){
+    // Units
+    for(const u of state.units){ if(u.team===team){ if(Math.hypot(u.x-x,u.y-y)<14) return u; } }
+    // Buildings
+    for(const b of state.buildings){ if(b.team===team){ const gx=b.tx*TILE, gy=b.ty*TILE, w=b.size*TILE, h=b.size*TILE; if(x>=gx&&x<=gx+w&&y>=gy&&y<=gy+h) return b; } }
+    return null;
+  }
+  function pickResource(x,y){
+    for(const r of state.resources){ const gx=r.tx*TILE+TILE/2, gy=r.ty*TILE+TILE/2; if(Math.hypot(gx-x,gy-y)<18 && r.amount>0) return r; }
+    return null;
+  }
+
+  // ========= Victory Checking =========
+  function checkAllVictories(){
+    if(state.vp.culture>=VICTORY_TARGETS.culture) checkVictory('cultural');
+    if(state.vp.tech>=VICTORY_TARGETS.tech) checkVictory('tech');
+    if(state.vp.dip>=VICTORY_TARGETS.dip) checkVictory('political');
+    if(state.vp.trade>=VICTORY_TARGETS.trade) checkVictory('trade');
+    if(state.vp.war>=VICTORY_TARGETS.war) checkVictory('conquest');
+  }
+
+  function checkVictory(kind){
+    $$('#victory').style.display='flex';
+    const map={
+      cultural:['Cultural Victory!','Your shrines and theatre echo across the realm.'],
+      tech:['Technological Victory!','Your Grand Invention reshapes the age.'],
+      political:['Political Victory!','Allies and treaties cement your rule.'],
+      trade:['Trade Victory!','Your trade web prospers beyond measure.'],
+      conquest:['Conquest Victory!','No foes remain to challenge your banner.'],
+      tech2:['Technological Victory!','A leap into mastery.']
+    };
+    const [t,d] = map[kind]||['Victory!','Greatness achieved.'];
+    $$('#vict-title').textContent=t; $$('#vict-desc').textContent=d;
+    state.paused=true;
+  }
+
+  // ========= DOM Utils =========
+  Node.prototype.append = function(...els){ els.forEach(e=>this.appendChild(e)); };
+
+  // ========= Boot =========
+  buildFactionChoices();
+
+})();
+</script>
+</body>
+</html>

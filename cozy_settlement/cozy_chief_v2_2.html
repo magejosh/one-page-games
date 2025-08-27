@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cozy Chief — v2.2 (Reliable Placement)</title>
+<style>
+:root{
+  --bg:#0e1222; --panel:#151b2e; --panel2:#1b2340; --line:#2a335a; --ink:#e9eeff; --muted:#b7c2ff;
+  --good:#91e1a1; --warn:#ffd079; --bad:#ff9aa0; --accent:#88c2ff;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
+     background: radial-gradient(1100px 520px at 65% -10%, rgba(255,255,255,.07), transparent 60%), linear-gradient(180deg,#0a0f1f,#0f1531);}
+header,footer{padding:10px 12px; background:linear-gradient(180deg,var(--panel),var(--panel2)); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+.wrap{display:grid; grid-template-rows:auto 1fr auto; height:100%}
+.row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.pill{background:#0c1125; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-weight:800}
+.small{font-size:12px; color:var(--muted)}
+.grid{display:grid; grid-template-columns: 320px 1fr 320px; gap:10px; padding:10px}
+.panel{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:12px; padding:10px; overflow:auto}
+h2{margin:4px 0 8px; font-size:18px}
+.btn{background:#232b4d; border:1px solid var(--line); color:var(--ink); padding:8px 10px; border-radius:10px; font-weight:800; cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.5; cursor:not-allowed}
+.select{background:#0e1430; border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:6px 10px; font-weight:700}
+.bcard{border:1px solid var(--line); border-radius:12px; background:#0f1432; padding:8px; margin-bottom:6px}
+.cost{font-size:12px; color:#cbd4ff}
+.flex{display:flex; justify-content:space-between; align-items:center; gap:6px}
+.kbd{background:#0a0f22; border:1px solid var(--line); padding:2px 6px; border-radius:6px; font-weight:800}
+/* Map */
+.mapWrap{display:grid; grid-template-columns: 1fr 160px; gap:8px; align-items:stretch}
+.viewport{position:relative; background:linear-gradient(180deg,#132147,#0f1636); border:1px solid var(--line); border-radius:12px; overflow:hidden; min-height:520px; cursor:grab}
+.viewport.dragging{cursor:grabbing}
+#map{position:absolute; left:0; top:0; transform-origin: top left;}
+.tile{position:absolute; width:40px; height:40px; border:1px solid #2f3a66; border-radius:6px;
+      display:flex; align-items:center; justify-content:center; font-size:18px; color:#e9f2ff;
+      background:linear-gradient(180deg,#17264b,#15213f); user-select:none; pointer-events:auto}
+.tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
+#hl{position:absolute; width:40px; height:40px; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
+.minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
+#miniCanvas{width:100%; height:100%}
+.viewRect{position:absolute; border:2px solid #9bd0ff; box-shadow:0 0 6px rgba(152,206,255,.7) inset; pointer-events:none}
+/* Log */
+.log{white-space:pre-wrap; font-size:12px}
+.toast{position:fixed; right:12px; bottom:12px; background:#0f1430; border:1px solid var(--line); border-radius:10px; padding:10px 12px; display:none}
+.badge{display:inline-block; padding:2px 6px; border-radius:6px; background:#26305a; border:1px solid #36407a}
+#placingBanner{position:absolute; top:10px; left:50%; transform:translateX(-50%); padding:6px 10px; border-radius:8px; background:#0b1130; border:1px solid #2a335a; display:none; z-index:5}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div id="resRow" class="row"></div>
+  <div class="row" style="gap:14px; margin-top:6px">
+    <span class="pill">Leader: <b>Cozy Chief</b></span>
+    <span class="pill">Tier <b id="tier">Hamlet I</b></span>
+    <span class="pill">Day <b id="day">1</b></span>
+    <span class="pill">Season <b id="season">Spring</b></span>
+    <span class="pill">Time <b id="clock">06:00</b></span>
+    <span class="pill">Happiness <b id="happy">100%</b></span>
+    <label class="pill">Speed
+      <select id="speed" class="select">
+        <option value="0">Pause</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </label>
+    <span class="small">Zoom: Wheel · Pan: Drag · Place: click tile · Cancel: <span class="kbd">Esc</span></span>
+  </div>
+</header>
+
+<div class="grid">
+  <aside class="panel">
+    <h2>Actions</h2>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      <button id="gWood" class="btn">🌲 Forage Wood<br><span class="small">+5 wood · 3s</span></button>
+      <button id="gFood" class="btn">🍓 Forage Berries<br><span class="small">+5 food · 3s</span></button>
+      <button id="gStone" class="btn">🪨 Scavenge Stone<br><span class="small">+3 stone · 5s</span></button>
+      <button id="gClay" class="btn">🧱 Dig Clay<br><span class="small">+3 clay · 5s</span></button>
+      <button id="gFlax" class="btn">🌿 Gather Flax<br><span class="small">+2 flax · 6s</span></button>
+    </div>
+    <h2 style="margin-top:10px">Build</h2>
+    <div id="buildList"></div>
+  </aside>
+
+  <main class="panel">
+    <div class="mapWrap">
+      <div class="viewport" id="viewport">
+        <div id="placingBanner">PLACEMENT MODE — click a tile</div>
+        <div id="map"></div>
+        <div id="hl"></div>
+      </div>
+      <div>
+        <h2>Minimap</h2>
+        <div class="minimap">
+          <canvas id="miniCanvas" width="160" height="160"></canvas>
+          <div id="miniView" class="viewRect"></div>
+        </div>
+        <div class="bcard">
+          <div class="small"><b>Tech & Culture</b></div>
+          <div class="small" id="techHint">Earn 📜 Knowledge to discover new techs.</div>
+          <button class="btn" id="openTech">Spend 📜 for Discovery</button>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
+      <section class="bcard">
+        <div class="small"><b>Milestones</b> — goals that grant rewards</div>
+        <div id="quests"></div>
+      </section>
+      <section class="bcard">
+        <div class="small"><b>Journal</b></div>
+        <div id="log" class="log"></div>
+      </section>
+    </div>
+  </main>
+
+  <aside class="panel">
+    <h2>Planner</h2>
+    <div id="planner" class="small">Select a building to enter placement mode, then click a tile on the map.</div>
+    <h2>Settings</h2>
+    <button id="reset" class="btn">Reset Game</button>
+  </aside>
+</div>
+
+<footer>
+  <div class="small">Cozy Chief v2.2 — reliable placement (viewport + tile handlers) and visible placement banner. 1 in‑game hour per real‑minute at 1×.</div>
+</footer>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ===== helpers
+const $ = s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':Math.floor(n);
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1400); }
+function log(msg){ const el=$('#log'); const time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); el.textContent='['+time+'] '+msg+'\\n'+el.textContent; }
+
+// ===== data
+const RES=["wood","stone","food","gold","clay","flax","linen","iron","tools","housing","pop","faith","knowledge","culture"];
+const EM={wood:"🌲",stone:"🪨",food:"🍞",gold:"🪙",clay:"🧱",flax:"🌿",linen:"🧵",iron:"⛓️",tools:"🛠️",housing:"🏠",pop:"👪",faith:"⛪",knowledge:"📜",culture:"🎶"};
+const WORLD_W=48, WORLD_H=30, CELL=40;
+const SEASONS=[{name:"Spring",farm:1.15},{name:"Summer",farm:1.25},{name:"Autumn",farm:1.05},{name:"Winter",farm:0.6}];
+const BUILD=[
+  {k:"woodhut",name:"Woodcutter Hut",ic:"🪓",desc:"Produces wood.",cost:{wood:15},prod:{wood:0.8}},
+  {k:"farm",name:"Wheat Farm",ic:"🌾",desc:"Produces food (seasonal).",cost:{wood:20},prod:{food:0.9}},
+  {k:"cottage",name:"Cottage",ic:"🏚️",desc:"+3 housing.",cost:{wood:35,stone:12},house:3},
+  {k:"claypit",name:"Clay Pit",ic:"🧱",desc:"Digs clay.",cost:{wood:25},prod:{clay:0.6}},
+  {k:"loom",name:"Loom",ic:"🧵",desc:"Turns flax ➜ linen.",cost:{wood:45,clay:20},use:{flax:0.5},prod:{linen:0.4},need:"Weaving"},
+  {k:"flaxfield",name:"Flax Field",ic:"🌿",desc:"Grows flax.",cost:{wood:20},prod:{flax:0.6},need:"Weaving"},
+  {k:"mine",name:"Iron Mine",ic:"⛏️",desc:"Extracts iron ore.",cost:{wood:50,stone:40},prod:{iron:0.5},need:"Masonry"},
+  {k:"workshop",name:"Workshop",ic:"🛠️",desc:"Iron + wood ➜ tools.",cost:{wood:60,stone:30,iron:10},use:{iron:0.4, wood:0.2},prod:{tools:0.3},need:"Crafting"},
+  {k:"bakery",name:"Bakery",ic:"🥐",desc:"Food ➜ gold.",cost:{wood:50,stone:30},use:{food:0.7},prod:{gold:0.4}},
+  {k:"inn",name:"Inn",ic:"🍻",desc:"Raises happiness & culture.",cost:{wood:70,stone:50,gold:40},mood:+0.3,prod:{culture:0.2}},
+  {k:"shrine",name:"Wayside Shrine",ic:"🕯️",desc:"Generates faith.",cost:{wood:60,stone:80},prod:{faith:0.25},need:"Spirituality"},
+  {k:"school",name:"Village School",ic:"🏫",desc:"Generates knowledge.",cost:{wood:90,stone:90,clay:40},prod:{knowledge:0.28},need:"Learning"},
+  {k:"market",name:"Market",ic:"🏦",desc:"Gold based on population and culture.",cost:{wood:70,stone:90,linen:20},prod:{gold:0},need:"Trade"},
+];
+const DECK=[
+  {name:"Weaving",desc:"Unlock Flax Field + Loom."},
+  {name:"Masonry",desc:"+10% stone; Iron Mine cheaper."},
+  {name:"Crafting",desc:"Unlock Workshop; +10% with tools."},
+  {name:"Spirituality",desc:"Unlock Shrine; +5 happiness."},
+  {name:"Learning",desc:"Unlock School; Woodcutters +10%."},
+  {name:"Trade",desc:"Unlock Market; Inns +20% culture."},
+  {name:"Brewcraft",desc:"Bakery +20% gold; +10% food use."},
+  {name:"Stone Roads",desc:"+10% to all production."},
+  {name:"Governing Council",desc:"+2 housing per Cottage."},
+];
+const TIERS=[
+  {name:"Hamlet I", need:{}},
+  {name:"Village II", need:{pop:10, food:120}},
+  {name:"Market Town III", need:{pop:20, gold:200, culture:40}},
+  {name:"Borough IV", need:{pop:35, knowledge:250}},
+];
+
+// ===== state
+const S={
+  res:{wood:25, stone:12, food:20, gold:0, clay:0, flax:0, linen:0, iron:0, tools:0, housing:0, pop:3, faith:0, knowledge:0, culture:0},
+  b:{}, tier:0, day:1, secs:6*60, season:0, happy:100,
+  speed:1, // minutes per real second at 1×
+  cam:{x:200,y:200,z:1.0,drag:false,lastX:0,lastY:0},
+  tiles:[], place:null, // building key being placed
+  techs: new Set(),
+};
+BUILD.forEach(b=>S.b[b.k]=0);
+for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null}); } S.tiles.push(row); }
+
+// ===== UI
+function drawRes(){
+  const row=$('#resRow'); row.innerHTML='';
+  RES.forEach(k=>{
+    const pill=document.createElement('span'); pill.className='pill';
+    pill.innerHTML = `${EM[k]} <b id="r_${k}">${fmt(S.res[k]||0)}</b> <span class="small" style="margin-left:4px">${k}</span>`;
+    row.appendChild(pill);
+  });
+}
+function canUseTech(b){ return !b.need || S.techs.has(b.need); }
+function drawBuildList(){
+  const list=$('#buildList'); list.innerHTML='';
+  BUILD.forEach(b=>{
+    if(!canUseTech(b)) return;
+    const card=document.createElement('div'); card.className='bcard';
+    card.innerHTML=`<div class="flex"><div><strong>${b.ic} ${b.name}</strong><div class="small">${b.desc}</div></div><div><b id="cnt_${b.k}">${S.b[b.k]}</b></div></div>
+      <div class="cost">Cost: ${Object.entries(b.cost).map(([k,v])=>`${EM[k]} ${Math.floor(v)}`).join(' · ')}</div>
+      <div class="flex"><button id="build_${b.k}" class="btn">Place</button><span class="small badge">Click a tile…</span></div>`;
+    list.appendChild(card);
+    $('#build_'+b.k).onclick=()=>{ S.place=b.k; $('#placingBanner').style.display='block'; $('#planner').textContent='Click a tile to place. Esc to cancel.'; log('Placement mode: '+b.name); };
+  });
+}
+
+// ===== Map & camera
+const mapEl=$('#map'); const vp=$('#viewport'); const hl=$('#hl');
+function mapSize(){ return {w:WORLD_W*CELL, h:WORLD_H*CELL}; }
+function ensureMap(){
+  if(mapEl.hasChildNodes()) return;
+  mapEl.style.width = mapSize().w+'px'; mapEl.style.height = mapSize().h+'px';
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const t=document.createElement('div'); t.className='tile'; t.style.left=(x*CELL)+'px'; t.style.top=(y*CELL)+'px';
+      t.dataset.x=x; t.dataset.y=y; t.innerHTML='<span class="l"></span>';
+      mapEl.appendChild(t);
+    }
+  }
+}
+function redrawTiles(){
+  $$('.tile',mapEl).forEach(el=>{
+    const x=+el.dataset.x, y=+el.dataset.y; const cell=S.tiles[y][x];
+    if(cell.b){
+      const b=BUILD.find(q=>q.k===cell.b);
+      el.innerHTML=`<div>${b.ic}</div><span class="l">${b.name.split(' ')[0]}</span>`;
+    }else el.innerHTML='<span class="l"></span>';
+  });
+}
+function applyCam(){ mapEl.style.transform = `translate(${-S.cam.x}px, ${-S.cam.y}px) scale(${S.cam.z})`; updateMiniViewRect(); }
+
+// screen/world helpers
+function screenToWorld(sx,sy){
+  const rect=vp.getBoundingClientRect();
+  const x = (sx-rect.left)/S.cam.z + S.cam.x;
+  const y = (sy-rect.top)/S.cam.z + S.cam.y;
+  return {wx:x, wy:y};
+}
+function worldToTile(wx,wy){
+  const tx=Math.floor(wx/CELL), ty=Math.floor(wy/CELL);
+  if(tx<0||ty<0||tx>=WORLD_W||ty>=WORLD_H) return null;
+  return {tx,ty};
+}
+
+// hover highlight and click placement on viewport
+vp.addEventListener('mousemove',e=>{
+  if(!S.place){ hl.style.display='none'; return; }
+  const {wx,wy}=screenToWorld(e.clientX,e.clientY);
+  const pos=worldToTile(wx,wy);
+  if(!pos){ hl.style.display='none'; return; }
+  hl.style.display='block';
+  hl.style.left=((pos.tx*CELL - S.cam.x)*S.cam.z)+'px';
+  hl.style.top=((pos.ty*CELL - S.cam.y)*S.cam.z)+'px';
+  hl.style.transform=`scale(${S.cam.z})`;
+});
+vp.addEventListener('click',e=>{
+  if(!S.place) return;
+  const {wx,wy}=screenToWorld(e.clientX,e.clientY);
+  const pos=worldToTile(wx,wy);
+  if(!pos) return;
+  tryPlaceAt(S.place,pos.tx,pos.ty);
+});
+// Redundant: also allow clicking directly on tiles
+mapEl.addEventListener('click',e=>{
+  if(!S.place) return;
+  const tileEl = e.target.closest('.tile'); if(!tileEl) return;
+  const x=+tileEl.dataset.x, y=+tileEl.dataset.y;
+  tryPlaceAt(S.place,x,y);
+});
+
+window.addEventListener('keydown',e=>{ if(e.key==='Escape'){ exitPlace('cancelled'); }});
+function exitPlace(reason){
+  S.place=null; hl.style.display='none'; $('#placingBanner').style.display='none';
+  if(reason) $('#planner').textContent='Placement '+reason+'.';
+}
+
+// pan/zoom
+vp.addEventListener('mousedown',e=>{ if(e.button!==0) return; S.cam.drag=true; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; vp.classList.add('dragging'); });
+window.addEventListener('mouseup',()=>{ S.cam.drag=false; vp.classList.remove('dragging'); });
+window.addEventListener('mousemove',e=>{ if(S.cam.drag){ const dx=e.clientX-S.cam.lastX, dy=e.clientY-S.cam.lastY; S.cam.x -= dx/S.cam.z; S.cam.y -= dy/S.cam.z; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; applyCam(); }});
+vp.addEventListener('wheel',e=>{ e.preventDefault(); const dir=Math.sign(e.deltaY); S.cam.z=clamp(S.cam.z*(dir>0?0.9:1.1),0.6,2.5); applyCam(); },{passive:false});
+
+function tryPlaceAt(k,x,y){
+  const cell=S.tiles[y][x]; if(cell.b){ toast("Tile occupied"); log("Tile occupied @ "+x+","+y); return; }
+  const b=BUILD.find(q=>q.k===k);
+  for(const [rk,rv] of Object.entries(b.cost)){ if((S.res[rk]||0) < rv){ toast("Not enough "+rk); log("Missing "+rk+" for "+b.name); return; } }
+  for(const [rk,rv] of Object.entries(b.cost)){ S.res[rk]-=rv; }
+  cell.b=k; S.b[k]++; if(b.house) S.res.housing += b.house;
+  exitPlace('complete'); log("Built "+b.name+" @ "+x+","+y);
+  redrawTiles(); refresh();
+}
+
+// minimap
+const mini=$('#miniCanvas'); const mctx=mini.getContext('2d'); const miniRect=$('#miniView');
+function drawMinimap(){
+  const cw=mini.width, ch=mini.height;
+  mctx.fillStyle='#0b1130'; mctx.fillRect(0,0,cw,ch);
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const c=S.tiles[y][x];
+      if(!c.b) mctx.fillStyle='#16224a';
+      else{
+        const b=BUILD.find(t=>t.k===c.b);
+        const map={woodhut:'#3a6b5a', farm:'#5f7c3a', cottage:'#6b5a3a', bakery:'#a3764a', inn:'#7a5ca6', claypit:'#7a5a4a', loom:'#8a8ab2', flaxfield:'#507d6b', mine:'#59606f', workshop:'#9c8b6b', shrine:'#a0a8d0', school:'#9fb7e6', market:'#d3a85a'};
+        mctx.fillStyle=map[b.k]||'#8aa';
+      }
+      const mx=Math.floor(x*cw/WORLD_W), my=Math.floor(y*ch/WORLD_H);
+      mctx.fillRect(mx,my,Math.ceil(cw/WORLD_W),Math.ceil(ch/WORLD_H));
+    }
+  }
+}
+function updateMiniViewRect(){
+  const cw=mini.clientWidth, ch=mini.clientHeight;
+  const vw = vp.clientWidth / (WORLD_W*CELL) / S.cam.z * cw;
+  const vh = vp.clientHeight / (WORLD_H*CELL) / S.cam.z * ch;
+  const vx = S.cam.x / (WORLD_W*CELL) * cw;
+  const vy = S.cam.y / (WORLD_H*CELL) * ch;
+  miniRect.style.left = vx+'px'; miniRect.style.top = vy+'px';
+  miniRect.style.width = vw+'px'; miniRect.style.height = vh+'px';
+}
+mini.parentElement.addEventListener('click',e=>{
+  const r=mini.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  S.cam.x = x*(WORLD_W*CELL) - vp.clientWidth/(2*S.cam.z);
+  S.cam.y = y*(WORLD_H*CELL) - vp.clientHeight/(2*S.cam.z);
+  applyCam();
+});
+
+// ===== gameplay & loop
+function drawMeta(){
+  $('#tier').textContent=TIERS[S.tier].name; $('#day').textContent=S.day;
+  $('#season').textContent=SEASONS[S.season].name;
+  const h=Math.floor(S.secs/60)%24, m=Math.floor(S.secs%60);
+  $('#clock').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  $('#happy').textContent=Math.round(S.happy)+'%';
+}
+function refresh(){
+  RES.forEach(k=>$('#r_'+k).textContent=fmt(S.res[k]||0));
+  BUILD.forEach(b=>{ const x=$('#cnt_'+b.k); if(x) x.textContent=S.b[b.k]; });
+  drawMeta();
+  drawBuildList();
+  drawMinimap();
+  BUILD.forEach(b=>{
+    const btn=$('#build_'+b.k); if(!btn) return;
+    const ok=Object.entries(b.cost).every(([k,v])=>(S.res[k]||0)>=v);
+    btn.disabled=!ok;
+  });
+}
+function produce(dtMinutes){
+  const dt = dtMinutes/60;
+  BUILD.forEach(b=>{
+    const n=S.b[b.k]; if(!n) return;
+    if(b.use){
+      if(b.use.food){ const need=b.use.food*n*dt; const used=Math.min(need,S.res.food); S.res.food-=used; const r=need?used/need:1; if(b.prod && b.prod.gold) S.res.gold += b.prod.gold*n*r*dt; }
+      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools) S.res.tools += b.prod.tools*n*r*dt; }
+      if(b.use.wood){ const need=b.use.wood*n*dt; const used=Math.min(need,S.res.wood); S.res.wood-=used; }
+      if(b.use.flax){ const need=b.use.flax*n*dt; const used=Math.min(need,S.res.flax); S.res.flax-=used; const r=need?used/need:1; if(b.prod && b.prod.linen) S.res.linen += b.prod.linen*n*r*dt; }
+    }
+    if(b.prod){
+      for(const k in b.prod){
+        if(k==='gold' && b.use && b.use.food) continue;
+        let v=b.prod[k]*n;
+        if(b.k==='farm' && k==='food') v*=SEASONS[S.season].farm;
+        S.res[k]+=v*dt;
+      }
+    }
+    if(b.mood) S.happy += b.mood*dt;
+  });
+  const m=S.b.market||0; if(m>0) S.res.gold += (0.02*m)*(S.res.pop*0.2 + S.res.culture*0.05)*dt;
+  const spare=(S.res.housing||0)-(S.res.pop||0);
+  if(spare>0 && S.res.food>20) S.res.pop = Math.min(S.res.pop + 0.01*dt, S.res.housing);
+  const eat=Math.min(S.res.food, (S.res.pop*0.02)*dt); S.res.food -= eat;
+  if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
+  S.happy = clamp(S.happy, 50, 130);
+  S.secs += dtMinutes;
+  if(S.secs>=24*60){ S.secs-=24*60; S.day++; if((S.day-1)%8===0){ S.season=(S.season+1)%SEASONS.length; log("Season is now "+SEASONS[S.season].name+"."); } }
+  const nxt=TIERS[S.tier+1]; if(nxt){ const ok=Object.entries(nxt.need).every(([k,v])=>(S.res[k]||0)>=v); if(ok){ S.tier++; log("Advanced to "+TIERS[S.tier].name+"!"); } }
+}
+
+// Tech/discovery (simple prompt list, cost scales)
+function openTech(){
+  const cost = 40 + S.techs.size*30;
+  if((S.res.knowledge||0) < cost){ toast("Need "+cost+" 📜"); return; }
+  S.res.knowledge -= cost;
+  const remain = DECK.filter(d=>!S.techs.has(d.name));
+  if(remain.length===0){ toast("All discoveries known."); return; }
+  const picks=[]; while(picks.length<Math.min(3,remain.length)){ const c=remain[Math.random()*remain.length|0]; if(!picks.includes(c)) picks.push(c); }
+  const box=document.createElement('div'); box.className='bcard'; box.innerHTML='<div class="small">Pick one discovery:</div>';
+  picks.forEach(d=>{ const btn=document.createElement('button'); btn.className='btn'; btn.style="margin-top:6px"; btn.textContent=d.name+' — '+d.desc;
+    btn.onclick=()=>{ S.techs.add(d.name); box.remove(); refresh(); log("Discovery: "+d.name); }; box.appendChild(btn); });
+  $('#techHint').after(box);
+}
+$('#openTech').onclick=openTech;
+
+// actions & cooldowns
+function gain(o){ Object.entries(o).forEach(([k,v])=>S.res[k]=(S.res[k]||0)+v); refresh(); }
+function cooldown(btn,ms){ btn.disabled=true; const base=btn.innerHTML; let t=ms/1000; const id=setInterval(()=>{ t--; btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; if(t<=0){ clearInterval(id); btn.innerHTML=base; btn.disabled=false; }},1000); }
+$('#gWood').onclick=e=>{ gain({wood:5}); cooldown(e.currentTarget,3000); log("Gathered fallen branches."); };
+$('#gFood').onclick=e=>{ gain({food:5}); cooldown(e.currentTarget,3000); log("Picked wild berries."); };
+$('#gStone').onclick=e=>{ gain({stone:3}); cooldown(e.currentTarget,5000); log("Scavenged stone."); };
+$('#gClay').onclick=e=>{ gain({clay:3}); cooldown(e.currentTarget,5000); log("Waded the creek for clay."); };
+$('#gFlax').onclick=e=>{ gain({flax:2}); cooldown(e.currentTarget,6000); log("Collected flax stalks."); };
+$('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
+$('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
+
+// bootstrap
+drawRes(); drawBuildList(); ensureMap(); redrawTiles(); applyCam(); refresh();
+S.speed = parseFloat(document.getElementById('speed').value||'1');
+log("Your people gather around you, awaiting guidance.");
+let last=performance.now();
+function loop(ts){
+  const dtReal=(ts-last)/1000; last=ts;
+  const dtMinutes = dtReal * S.speed; // 1× -> 1 in‑game minute per real second
+  if(dtMinutes>0) produce(dtMinutes);
+  refresh();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
