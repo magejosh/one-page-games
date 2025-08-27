@@ -503,19 +503,18 @@ function produce(dtMinutes){
   // Pop growth & food
   const spare=(S.res.housing||0)-(S.res.pop||0);
 // spare is defined just above this block
-const prev = Math.floor(s.res.pop || 0);
-const growing = spare > 0 && s.res.food > 20;
+const growing = spare > 0 && S.res.food > 20;
 
 if (growing) {
   // keep main's happiness multiplier
-  const mult = Math.max(1, (s.happy - 100) / 100);
-  s.res.pop = Math.min(s.res.pop + 0.01 * mult * dt, s.res.housing);
+  const mult = Math.max(1, (S.happy - 100) / 100);
+  S.res.pop = Math.min(S.res.pop + 0.01 * mult * dt, S.res.housing);
 }
 
-const now = Math.floor(s.res.pop || 0);
+const now = Math.floor(S.res.pop || 0);
 
 // keep codex's grow-state toggle + redraw
-if (growing !== s.growing) { s.growing = growing; redrawTiles(); }
+if (growing !== S.growing) { S.growing = growing; redrawTiles(); }
 
 // keep main's per-villager arrival log (avoids duplicate/ambiguous messages)
 while (lastPop < now) {
