@@ -40,6 +40,8 @@ h2{margin:4px 0 8px; font-size:18px}
       background:linear-gradient(180deg,#17264b,#15213f); user-select:none; pointer-events:auto}
 #avatar{position:absolute; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:18px; pointer-events:none; z-index:5}
 .tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
+.tile .grow{position:absolute; top:2px; left:2px; font-size:12px}
+#hl{position:absolute; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
 .placing .tile:hover{border:2px dashed #9bd0ff; background:rgba(152,206,255,.1)}
 .minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
 #miniCanvas{width:100%; height:100%}
@@ -258,6 +260,7 @@ const S={
   avatar:{x:24,y:15,spd:1},
   mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false},
   timers:{chief:0, quarry:0},
+  growing:false,
 };
 let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
@@ -333,7 +336,12 @@ function ensureMap(){
 function redrawTiles(){
   $$('.tile',mapEl).forEach(el=>{
     const x=+el.dataset.x, y=+el.dataset.y; const cell=S.tiles[y][x];
-    if(cell.b){ const b=BUILD.find(q=>q.k===cell.b); el.innerHTML=`<div>${b.ic}</div><span class="l">${b.name.split(' ')[0]}</span>`; }
+    if(cell.b){
+      const b=BUILD.find(q=>q.k===cell.b);
+      let extra='';
+      if(S.growing && b.house) extra = '<span class="grow" title="Growing">👶</span>';
+      el.innerHTML=`<div>${b.ic}</div>${extra}<span class="l">${b.name.split(' ')[0]}</span>`;
+    }
     else if(cell.res){ const n=NODES.find(n=>n.k===cell.res); el.innerHTML=`<div>${n.em}</div><span class="l"></span>`; }
     else el.innerHTML='<span class="l"></span>';
   });
@@ -494,12 +502,27 @@ function produce(dtMinutes){
 
   // Pop growth & food
   const spare=(S.res.housing||0)-(S.res.pop||0);
-  if(spare>0 && S.res.food>20){
-    const mult = Math.max(0,1+(S.happy-100)/100);
-    S.res.pop = Math.min(S.res.pop + 0.01*mult*dt, S.res.housing);
-    const cur=Math.floor(S.res.pop);
-    while(lastPop<cur){ lastPop++; log("New villager arrived (population: "+lastPop+")."); }
-  }
+// spare is defined just above this block
+const prev = Math.floor(s.res.pop || 0);
+const growing = spare > 0 && s.res.food > 20;
+
+if (growing) {
+  // keep main's happiness multiplier
+  const mult = Math.max(1, (s.happy - 100) / 100);
+  s.res.pop = Math.min(s.res.pop + 0.01 * mult * dt, s.res.housing);
+}
+
+const now = Math.floor(s.res.pop || 0);
+
+// keep codex's grow-state toggle + redraw
+if (growing !== s.growing) { s.growing = growing; redrawTiles(); }
+
+// keep main's per-villager arrival log (avoids duplicate/ambiguous messages)
+while (lastPop < now) {
+  lastPop++;
+  log(`New villager arrived (population: ${lastPop}).`);
+}
+
   const eat=Math.min(S.res.food, (S.res.pop*0.02)*dt); S.res.food -= eat;
   if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
   S.happy = clamp(S.happy, 50, 130);
