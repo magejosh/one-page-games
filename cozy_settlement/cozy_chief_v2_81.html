@@ -40,7 +40,7 @@ h2{margin:4px 0 8px; font-size:18px}
       background:linear-gradient(180deg,#17264b,#15213f); user-select:none; pointer-events:auto}
 #avatar{position:absolute; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:18px; pointer-events:none; z-index:5}
 .tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
-#hl{position:absolute; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
+.placing .tile:hover{border:2px dashed #9bd0ff; background:rgba(152,206,255,.1)}
 .minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
 #miniCanvas{width:100%; height:100%}
 .viewRect{position:absolute; border:2px solid #9bd0ff; box-shadow:0 0 6px rgba(152,206,255,.7) inset; pointer-events:none}
@@ -109,7 +109,6 @@ h2{margin:4px 0 8px; font-size:18px}
     <div class="mapWrap">
       <div class="viewport" id="viewport">
         <div id="map"></div>
-        <div id="hl"></div>
       </div>
       <div>
         <h2>Minimap</h2>
@@ -299,14 +298,15 @@ function rebuildBuildListForTech(){ buildBuildList(); updateBuildButtons(); }
 function enterPlacement(k){
   S.place=k; $('#placingText').textContent='Placing: '+BUILD.find(x=>x.k===k).name;
   $('#planner').textContent='Click a tile to place. Esc to cancel.'; log('Placement mode: '+k);
+  mapEl.classList.add('placing');
 }
 function exitPlacement(msg){
   S.place=null; $('#placingText').textContent=''; if(msg) $('#planner').textContent=msg;
-  hl.style.display='none';
+  mapEl.classList.remove('placing');
 }
 
 // ===== Map & camera
-const mapEl=$('#map'); const vp=$('#viewport'); const hl=$('#hl');
+const mapEl=$('#map'); const vp=$('#viewport');
 function mapSize(){ return {w:WORLD_W*CELL, h:WORLD_H*CELL}; }
 function ensureMap(){
   if(mapEl.hasChildNodes()) return;
@@ -347,22 +347,6 @@ function centerOnAvatar(){
   S.cam.y = S.avatar.y*CELL - vh/2 + CELL/2;
   applyCam();
 }
-// Pixel-perfect highlight
-function showHL(tx,ty){
-  const z=S.cam.z; const {cx,cy}=camOffset();
-  hl.style.display='block';
-  hl.style.left=((tx*CELL - cx)*z)+'px';
-  hl.style.top=((ty*CELL - cy)*z)+'px';
-  hl.style.width=(CELL*z)+'px';
-  hl.style.height=(CELL*z)+'px';
-  hl.style.transform='none';
-}
-vp.addEventListener('mousemove',e=>{
-  if(!S.place){ hl.style.display='none'; return; }
-  const {wx,wy}=screenToWorld(e.clientX,e.clientY); const pos=worldToTile(wx,wy);
-  if(!pos){ hl.style.display='none'; return; } showHL(pos.tx,pos.ty);
-});
-vp.addEventListener('click',e=>{ if(!S.place) return; const {wx,wy}=screenToWorld(e.clientX,e.clientY); const p=worldToTile(wx,wy); if(!p) return; placeAt(S.place,p.tx,p.ty); });
 mapEl.addEventListener('click',e=>{
   const t=e.target.closest('.tile'); if(!t) return; e.stopPropagation();
   const x=+t.dataset.x, y=+t.dataset.y;
