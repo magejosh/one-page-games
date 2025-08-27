@@ -411,7 +411,7 @@ function produce(dtMinutes){
     // consumption
     if(b.use){
       if(b.use.food){ let need=b.use.food*n*dt; if(b.k==='bakery') need*= (S.mods.bakeryFoodUse||1); const used=Math.min(need,S.res.food); S.res.food-=used; const r=need?used/need:1; if(b.prod && b.prod.gold) S.res.gold += b.prod.gold*n*r*dt*(S.mods.bakeryGold||1); }
-      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools) S.res.tools += b.prod.tools*n*r*dt; }
+      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools){ let v=b.prod.tools*n*r*dt; if(S.mods.toolBonus) v*=1.2; S.res.tools += v; } }
       if(b.use.wood){ const need=b.use.wood*n*dt; const used=Math.min(need,S.res.wood); S.res.wood-=used; }
       if(b.use.flax){ const need=b.use.flax*n*dt; const used=Math.min(need,S.res.flax); S.res.flax-=used; const r=need?used/need:1; if(b.prod && b.prod.linen) S.res.linen += b.prod.linen*n*r*dt; }
     }
@@ -483,7 +483,7 @@ function applyTechEffects(name){
     case 'Masonry': S.mods.mineDiscount=0.15; S.mods.stoneForage=1.1; log("Masonry improves stonework (+10% stone scavenging, cheaper mines)."); break;
     case 'Spirituality': S.happy+=5; log("Spirituality lifts hearts (+5 happiness)."); break;
     case 'Learning': S.mods.woodhutMult=1.10; log("Learning boosts forestry (+10% woodcutters)."); break;
-    case 'Crafting': S.mods.toolBonus=true; S.mods.allMult*=1.10; log("Crafting refines output (+10% production)."); break;
+    case 'Crafting': S.mods.toolBonus=true; S.mods.allMult*=1.10; log("Crafting refines output (+10% production, +20% tools)."); break;
     case 'Trade Guilds': S.mods.innCulture=1.20; log("Trade Guilds make taverns livelier (+20% culture from Inns)."); break;
     case 'Stone Roads': S.mods.allMult*=1.10; log("Stone Roads quicken every craft (+10% all production)."); break;
     case 'Brewcraft': S.mods.bakeryGold=1.20; S.mods.bakeryFoodUse=1.10; log("Brewcraft enriches bakeries (+20% gold, +10% grain use)."); break;
