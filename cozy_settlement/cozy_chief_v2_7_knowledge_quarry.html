@@ -401,7 +401,6 @@ function updateBuildButtons(){
 function prodMult(b){
   let m = S.mods.allMult;
   if(b.k==='woodhut') m*=S.mods.woodhutMult;
-  if(b.k==='inn') m*=S.mods.innCulture; // handled in culture
   return m;
 }
 function produce(dtMinutes){
