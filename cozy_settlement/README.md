@@ -3,6 +3,7 @@
 A tiny medieval settlement builder in a single HTML file. Gather resources, place buildings on a draggable grid, research techs, and grow your hamlet through the ages.
 
 ### Play the builds
+- `cozy_chief_v2_8_avatar_longhouse.html` — Avatar exploration with resource nodes, unique 🏰 Longhouse, refreshed ⛏️ Quarry, and new Exploration tech.
 - `cozy_chief_v2_7_knowledge_quarry.html` — Latest build with tech tree UI, Chief’s Longhouse lore events, stone quarry rare finds, and a minimap.
 - `cozy_chief_v2_6_tech.html` — First pass at a research tree and unlockable buildings.
 - `cozy_chief_v2_5_full.html` — Restored systems with seasons, happiness, tiers, and minimap.

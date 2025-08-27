@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cozy Chief — v2.8 (Avatar & Longhouse)</title>
+<style>
+:root{
+  --bg:#0e1222; --panel:#151b2e; --panel2:#1b2340; --line:#2a335a; --ink:#e9eeff; --muted:#b7c2ff;
+  --good:#91e1a1; --warn:#ffd079; --bad:#ff9aa0; --accent:#88c2ff; --accent2:#a7d6ff;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink);
+     background: radial-gradient(1100px 520px at 65% -10%, rgba(255,255,255,.07), transparent 60%), linear-gradient(180deg,#0a0f1f,#0f1531);}
+header,footer{padding:10px 12px; background:linear-gradient(180deg,var(--panel),var(--panel2)); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+.wrap{display:grid; grid-template-rows:auto 1fr auto; height:100%}
+.row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.pill{background:#0c1125; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-weight:800}
+.small{font-size:12px; color:#c8d2ff}
+.grid{display:grid; grid-template-columns: 320px 1fr 360px; gap:10px; padding:10px}
+.panel{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:12px; padding:10px; overflow:auto}
+h2{margin:4px 0 8px; font-size:18px}
+.btn{background:#232b4d; border:1px solid var(--line); color:var(--ink); padding:8px 10px; border-radius:10px; font-weight:800; cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.5; cursor:not-allowed}
+.select{background:#0e1430; border:1px solid var(--line); color:var(--ink); border-radius:10px; padding:6px 10px; font-weight:700}
+.bcard{border:1px solid var(--line); border-radius:12px; background:#0f1432; padding:8px; margin-bottom:6px}
+.cost{font-size:12px; color:#cbd4ff}
+.flex{display:flex; justify-content:space-between; align-items:center; gap:6px}
+.kbd{background:#0a0f22; border:1px solid var(--line); padding:2px 6px; border-radius:6px; font-weight:800}
+.badge{display:inline-block; padding:2px 6px; border-radius:6px; background:#26305a; border:1px solid #36407a}
+/* Map */
+.mapWrap{display:grid; grid-template-columns: 1fr 160px; gap:8px; align-items:stretch}
+.viewport{position:relative; background:linear-gradient(180deg,#132147,#0f1636); border:1px solid var(--line); border-radius:12px; overflow:hidden; min-height:520px; cursor:grab}
+.viewport.dragging{cursor:grabbing}
+#map{position:absolute; left:0; top:0; transform-origin: top left;}
+.tile{position:absolute; width:40px; height:40px; border:1px solid #2f3a66; border-radius:6px;
+      display:flex; align-items:center; justify-content:center; font-size:18px; color:#e9f2ff;
+      background:linear-gradient(180deg,#17264b,#15213f); user-select:none; pointer-events:auto}
+#avatar{position:absolute; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:18px; pointer-events:none; z-index:5}
+.tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
+#hl{position:absolute; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
+.minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
+#miniCanvas{width:100%; height:100%}
+.viewRect{position:absolute; border:2px solid #9bd0ff; box-shadow:0 0 6px rgba(152,206,255,.7) inset; pointer-events:none}
+/* Log */
+.log{white-space:pre-wrap; font-size:12px}
+.toast{position:fixed; right:12px; bottom:12px; background:#0f1430; border:1px solid var(--line); border-radius:10px; padding:10px 12px; display:none}
+/* Tech modal */
+#techModal{position:fixed; inset:0; background:rgba(7,10,22,.8); display:none; align-items:center; justify-content:center; z-index:30}
+.techCard{width:980px; height:640px; background:#0e1430; border:1px solid #2a335a; border-radius:14px; box-shadow:0 20px 80px rgba(0,0,0,.5); display:grid; grid-template-rows:auto 1fr auto}
+.techHead{display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #2a335a}
+.techWrap{position:relative; overflow:auto; background: radial-gradient(1200px 600px at 50% -10%, rgba(255,255,255,.06), transparent 60%); }
+#techCanvas{position:relative; width:1400px; height:900px; margin:12px; }
+#techEdges{position:absolute; inset:0; pointer-events:none}
+.node{position:absolute; min-width:150px; max-width:200px; padding:8px; border-radius:10px; border:1px solid #3a4472; background:#11173a; box-shadow:0 6px 14px rgba(0,0,0,.2)}
+.node h4{margin:0 0 4px; font-size:14px}
+.node .desc{font-size:12px; color:#cbd4ff}
+.node .cost{font-size:12px; margin-top:6px; color:#dfe6ff}
+.node .unlock{font-size:12px; color:#a7ffc7}
+.node.owned{border-color:#3e7a57; background:#112a1e}
+.node.available{border-color:#7aa0ff; box-shadow:0 0 0 2px rgba(122,160,255,.2)}
+.node.locked{opacity:.6}
+.node button{margin-top:6px}
+.techFoot{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #2a335a}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div id="resRow" class="row"></div>
+  <div class="row" style="gap:14px; margin-top:6px">
+    <span class="pill">Leader: <b>Cozy Chief</b></span>
+    <span class="pill">Tier <b id="tier">Hamlet I</b></span>
+    <span class="pill">Day <b id="day">1</b></span>
+    <span class="pill">Season <b id="season">Spring</b></span>
+    <span class="pill">Time <b id="clock">06:00</b></span>
+    <span class="pill">Happiness <b id="happy">100%</b></span>
+    <label class="pill">Speed
+      <select id="speed" class="select">
+        <option value="0">Pause</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </label>
+    <span id="placingText" class="small"></span>
+    <span class="small">Zoom: Wheel · Pan: Drag · Place: click tile · Cancel: <span class="kbd">Esc</span></span>
+  </div>
+</header>
+
+<div class="grid">
+  <aside class="panel">
+    <h2>Actions</h2>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      <button id="gWood" class="btn">🌲 Forage Wood<br><span class="small">+5 wood · 3s</span></button>
+      <button id="gFood" class="btn">🍓 Forage Berries<br><span class="small">+5 food · 3s</span></button>
+      <button id="gStone" class="btn">🗿 Scavenge Stone<br><span class="small">+3 stone · 5s</span></button>
+      <button id="gClay" class="btn">🧱 Dig Clay<br><span class="small">+3 clay · 5s</span></button>
+      <button id="gFlax" class="btn">🌿 Gather Flax<br><span class="small">+2 flax · 6s</span></button>
+    </div>
+    <h2 style="margin-top:10px">Build</h2>
+    <div id="buildList"></div>
+  </aside>
+
+  <main class="panel">
+    <div class="mapWrap">
+      <div class="viewport" id="viewport">
+        <div id="map"></div>
+        <div id="hl"></div>
+      </div>
+      <div>
+        <h2>Minimap</h2>
+        <div class="minimap">
+          <canvas id="miniCanvas" width="160" height="160"></canvas>
+          <div id="miniView" class="viewRect"></div>
+        </div>
+        <div class="bcard">
+          <div class="small"><b>Tech & Culture</b></div>
+          <div class="small">Spend 📜 Knowledge to steer your <b>fantasy medieval</b> village’s path.</div>
+          <div class="row" style="gap:6px; margin-top:6px">
+             <button class="btn" id="btnTechTree">Open Tech Tree</button>
+             <button class="btn" id="btnDiscovery">Surprise Discovery</button>
+          </div>
+          <div id="techActive" class="small" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
+      <section class="bcard">
+        <div class="small"><b>Milestones</b> — goals that grant rewards</div>
+        <div id="quests"></div>
+      </section>
+      <section class="bcard">
+        <div class="small"><b>Journal</b></div>
+        <div id="log" class="log"></div>
+      </section>
+    </div>
+  </main>
+
+  <aside class="panel">
+    <h2>Planner</h2>
+    <div id="planner" class="small">Select a building to enter placement mode, then click a tile on the map.</div>
+    <h2>Settings</h2>
+    <button id="reset" class="btn">Reset Game</button>
+  </aside>
+</div>
+
+<footer>
+  <div class="small">Cozy Chief v2.8 — Avatar exploration, unique 🏰 Longhouse, refreshed ⛏️ Quarry, and expanded tech paths.</div>
+</footer>
+
+<div id="toast" class="toast"></div>
+
+<!-- Tech Modal -->
+<div id="techModal">
+  <div class="techCard">
+    <div class="techHead">
+      <div><b>Tech Tree — Fantasy Medieval</b> <span class="small">Click a node to research with 📜 Knowledge.</span></div>
+      <button id="techClose" class="btn">Close</button>
+    </div>
+    <div class="techWrap">
+      <svg id="techEdges" width="1400" height="900"></svg>
+      <div id="techCanvas"></div>
+    </div>
+    <div class="techFoot small">
+      <div>Owned: <span id="ownedCount">0</span> · Knowledge: <span id="knCur">0</span></div>
+      <div>Tip: You can also roll a <b>Surprise Discovery</b> from the right panel.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== helpers
+const $ = s=>document.querySelector(s); const $$=s=>Array.from(document.querySelectorAll(s));
+const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':Math.floor(n);
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1400); }
+function log(msg){ const el=$('#log'); const time=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); el.textContent='['+time+'] '+msg+'\\n'+el.textContent; }
+
+// ===== data
+const RES=["wood","stone","food","gold","clay","flax","linen","iron","tools","housing","pop","faith","knowledge","culture"];
+const EM={wood:"🌲",stone:"🗿",food:"🍞",gold:"💰",clay:"🧱",flax:"🌿",linen:"🧵",iron:"⛓️",tools:"🛠️",housing:"🏠",pop:"👪",faith:"⛪",knowledge:"📜",culture:"🎶"};
+const NODES=[
+  {k:'tree',em:'🌲',gain:{wood:5}},
+  {k:'berry',em:'🍓',gain:{food:5}},
+  {k:'stone',em:'🪨',gain:{stone:3}},
+  {k:'clay',em:'🧱',gain:{clay:3}},
+];
+const WORLD_W=48, WORLD_H=30, CELL=40;
+const SEASONS=[{name:"Spring",farm:1.15},{name:"Summer",farm:1.25},{name:"Autumn",farm:1.05},{name:"Winter",farm:0.6}];
+const BUILD=[
+  {k:"chief",name:"Chief’s Longhouse",ic:"🏰",desc:"Unique hall of leadership; occasional 📜 from your people.",cost:{wood:30,stone:10},unique:true},
+  {k:"woodhut",name:"Woodcutter Hut",ic:"🪓",desc:"Produces wood.",cost:{wood:15},prod:{wood:0.8}},
+  {k:"farm",name:"Wheat Farm",ic:"🌾",desc:"Produces food (seasonal).",cost:{wood:20},prod:{food:0.9}},
+  {k:"cottage",name:"Cottage",ic:"🏚️",desc:"+3 housing.",cost:{wood:35,stone:12},house:3},
+  {k:"quarry",name:"Stone Quarry",ic:"⛏️",desc:"Slow stone; rare iron/gold finds.",cost:{wood:40,stone:15},prod:{stone:3.0}},
+  {k:"claypit",name:"Clay Pit",ic:"🧱",desc:"Digs clay.",cost:{wood:25},prod:{clay:0.6}},
+  {k:"loom",name:"Loom",ic:"🧵",desc:"Turns flax ➜ linen.",cost:{wood:45,clay:20},use:{flax:0.5},prod:{linen:0.4},need:"Weaving"},
+  {k:"flaxfield",name:"Flax Field",ic:"🌿",desc:"Grows flax.",cost:{wood:20},prod:{flax:0.6},need:"Weaving"},
+  {k:"mine",name:"Iron Mine",ic:"⛏️",desc:"Extracts iron ore.",cost:{wood:50,stone:40},prod:{iron:0.5},need:"Masonry"},
+  {k:"workshop",name:"Workshop",ic:"🛠️",desc:"Iron + wood ➜ tools.",cost:{wood:60,stone:30,iron:10},use:{iron:0.4, wood:0.2},prod:{tools:0.3},need:"Crafting"},
+  {k:"bakery",name:"Bakery",ic:"🥐",desc:"Food ➜ gold.",cost:{wood:50,stone:30},use:{food:0.7},prod:{gold:0.4}},
+  {k:"inn",name:"Inn",ic:"🍻",desc:"Raises happiness & culture.",cost:{wood:70,stone:50,gold:40},mood:+0.3,prod:{culture:0.2}},
+  {k:"shrine",name:"Wayside Shrine",ic:"🕯️",desc:"Generates faith.",cost:{wood:60,stone:80},prod:{faith:0.25},need:"Spirituality"},
+  {k:"school",name:"Village School",ic:"🏫",desc:"Steady 📜 knowledge.",cost:{wood:90,stone:90,clay:40},prod:{knowledge:0.35},need:"Learning"},
+  {k:"market",name:"Market",ic:"🏦",desc:"Gold based on population and culture.",cost:{wood:70,stone:90,linen:20},prod:{gold:0},need:"Trade"},
+];
+const TIERS=[
+  {name:"Hamlet I", need:{}},
+  {name:"Village II", need:{pop:10, food:120}},
+  {name:"Market Town III", need:{pop:20, gold:200, culture:40}},
+  {name:"Borough IV", need:{pop:35, knowledge:250}},
+];
+
+// Tech tree nodes
+const TECH = [
+  {id:"founding", name:"Founding Lore", cost:0, desc:"Traditions of hearth & clan.", prereq:[], unlocks:[]},
+  {id:"weaving", name:"Weaving", cost:40, desc:"Spin flax with spindle & loom.", prereq:["founding"], unlocks:["flaxfield","loom"]},
+  {id:"masonry", name:"Masonry", cost:40, desc:"Stonecraft, mortar, true arches.", prereq:["founding"], unlocks:[], effect:"mine_discount,stone_foraging"},
+  {id:"spirituality", name:"Spirituality", cost:40, desc:"Shrines, rites, wandering monks.", prereq:["founding"], unlocks:["shrine"], effect:"happiness"},
+  {id:"learning", name:"Learning", cost:50, desc:"Scribes, slates & lorekeepers.", prereq:["founding"], unlocks:["school"], effect:"wood_bonus"},
+  {id:"exploration", name:"Exploration", cost:40, desc:"Scouts chart the unknown.", prereq:["founding"], unlocks:[], effect:"avatar_speed"},
+  {id:"crafting", name:"Crafting", cost:60, desc:"Bellows, anvils, better tools.", prereq:["masonry"], unlocks:["workshop"], effect:"tool_bonus"},
+  {id:"trade", name:"Trade Guilds", cost:60, desc:"Guild charters & market rights.", prereq:["masonry"], unlocks:["market"], effect:"inn_culture_bonus"},
+  {id:"stone_roads", name:"Stone Roads", cost:80, desc:"Milestone roads bind the realm.", prereq:["masonry"], unlocks:[], effect:"all_prod_bonus"},
+  {id:"brewcraft", name:"Brewcraft", cost:80, desc:"Malt, yeast, and alewives.", prereq:["trade"], unlocks:[], effect:"bakery_bonus"},
+  {id:"council", name:"Governing Council", cost:100, desc:"Elders & charters guide growth.", prereq:["learning","trade"], unlocks:[], effect:"cottage_bonus"},
+];
+const TECH_POS = {
+  founding:[80,80],
+  weaving:[330,50],
+  masonry:[330,200],
+  spirituality:[330,350],
+  learning:[330,500],
+  crafting:[630,200],
+  trade:[630,320],
+  stone_roads:[630,80],
+  brewcraft:[930,320],
+  council:[930,500],
+  exploration:[630,560],
+};
+
+// seeded rng
+let seedStr=new URLSearchParams(location.search).get('seed')||prompt('World seed?','')||Math.random().toString(36).slice(2);
+let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31+seedStr.charCodeAt(i))|0;
+function rng(){ seed^=seed<<13; seed^=seed>>>17; seed^=seed<<5; return (seed>>>0)/4294967296; }
+
+// ===== state
+const S={
+  res:{wood:25, stone:12, food:20, gold:0, clay:0, flax:0, linen:0, iron:0, tools:0, housing:0, pop:3, faith:0, knowledge:0, culture:0},
+  b:{}, tier:0, day:1, secs:6*60, season:0, happy:100,
+  speed:1, cam:{x:200,y:200,z:1.0,drag:false,lastX:0,lastY:0},
+  tiles:[], place:null, techs: new Set(["Founding Lore"]),
+  avatar:{x:24,y:15,spd:1},
+  mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false},
+  timers:{chief:0, quarry:0},
+};
+BUILD.forEach(b=>S.b[b.k]=0);
+for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null}); } S.tiles.push(row); }
+function scatterNodes(){
+  const place=(k,c)=>{ for(let i=0;i<c;i++){ let x,y; do{ x=rng()*WORLD_W|0; y=rng()*WORLD_H|0; }while(S.tiles[y][x].res || (x===S.avatar.x && y===S.avatar.y)); S.tiles[y][x].res=k; } };
+  place('tree',60); place('berry',40); place('stone',30); place('clay',25);
+}
+scatterNodes();
+
+// ===== UI builders
+function buildResourceRow(){
+  const row=$('#resRow'); row.innerHTML='';
+  RES.forEach(k=>{
+    const pill=document.createElement('span'); pill.className='pill';
+    pill.innerHTML = `${EM[k]} <b id="r_${k}">${Math.floor(S.res[k]||0)}</b> <span class="small" style="margin-left:4px">${k}</span>`;
+    row.appendChild(pill);
+  });
+}
+function canUseTech(b){ return !b.need || S.techs.has(b.need); }
+function dynCost(bk){
+  const base = JSON.parse(JSON.stringify(BUILD.find(x=>x.k===bk).cost));
+  if(bk==="mine" && S.mods.mineDiscount>0){ for(const k in base){ base[k]=Math.ceil(base[k]*(1-S.mods.mineDiscount)); } }
+  return base;
+}
+function buildBuildList(){
+  const list=$('#buildList'); list.innerHTML='';
+  BUILD.forEach(b=>{
+    if(!canUseTech(b)) return;
+    if(b.unique && S.b[b.k]) return;
+    const cost = dynCost(b.k);
+    const card=document.createElement('div'); card.className='bcard';
+    card.innerHTML=`<div class="flex"><div><strong>${b.ic} ${b.name}</strong><div class="small">${b.desc}</div></div><div><b id="cnt_${b.k}">${S.b[b.k]}</b></div></div>
+      <div class="cost">Cost: ${Object.entries(cost).map(([k,v])=>`${EM[k]} ${Math.floor(v)}`).join(' · ')}</div>
+      <div class="flex"><button id="build_${b.k}" class="btn">Place</button><span class="small badge">Click a tile…</span></div>`;
+    list.appendChild(card);
+  });
+  BUILD.forEach(b=>{ const btn=document.getElementById('build_'+b.k); if(btn) btn.addEventListener('click',()=>enterPlacement(b.k)); });
+}
+function rebuildBuildListForTech(){ buildBuildList(); updateBuildButtons(); }
+function enterPlacement(k){
+  S.place=k; $('#placingText').textContent='Placing: '+BUILD.find(x=>x.k===k).name;
+  $('#planner').textContent='Click a tile to place. Esc to cancel.'; log('Placement mode: '+k);
+}
+function exitPlacement(msg){
+  S.place=null; $('#placingText').textContent=''; if(msg) $('#planner').textContent=msg;
+  hl.style.display='none';
+}
+
+// ===== Map & camera
+const mapEl=$('#map'); const vp=$('#viewport'); const hl=$('#hl');
+function mapSize(){ return {w:WORLD_W*CELL, h:WORLD_H*CELL}; }
+function ensureMap(){
+  if(mapEl.hasChildNodes()) return;
+  mapEl.style.width = mapSize().w+'px'; mapEl.style.height = mapSize().h+'px';
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const t=document.createElement('div'); t.className='tile'; t.style.left=(x*CELL)+'px'; t.style.top=(y*CELL)+'px';
+      t.dataset.x=x; t.dataset.y=y; t.innerHTML='<span class="l"></span>';
+      mapEl.appendChild(t);
+    }
+  }
+  const av=document.createElement('div'); av.id='avatar'; av.textContent='🏃'; mapEl.appendChild(av);
+  updateAvatar();
+}
+function redrawTiles(){
+  $$('.tile',mapEl).forEach(el=>{
+    const x=+el.dataset.x, y=+el.dataset.y; const cell=S.tiles[y][x];
+    if(cell.b){ const b=BUILD.find(q=>q.k===cell.b); el.innerHTML=`<div>${b.ic}</div><span class="l">${b.name.split(' ')[0]}</span>`; }
+    else if(cell.res){ const n=NODES.find(n=>n.k===cell.res); el.innerHTML=`<div>${n.em}</div><span class="l"></span>`; }
+    else el.innerHTML='<span class="l"></span>';
+  });
+}
+function applyCam(){ mapEl.style.transform = `translate(${-S.cam.x}px, ${-S.cam.y}px) scale(${S.cam.z})`; updateMiniViewRect(); }
+function screenToWorld(sx,sy){ const r=vp.getBoundingClientRect(); return {wx:(sx-r.left)/S.cam.z + S.cam.x, wy:(sy-r.top)/S.cam.z + S.cam.y}; }
+function worldToTile(wx,wy){ const tx=Math.floor(wx/CELL), ty=Math.floor(wy/CELL); if(tx<0||ty<0||tx>=WORLD_W||ty>=WORLD_H) return null; return {tx,ty}; }
+function updateAvatar(){ const av=$('#avatar'); av.style.left=(S.avatar.x*CELL)+'px'; av.style.top=(S.avatar.y*CELL)+'px'; }
+function moveAvatar(dx,dy){
+  const nx=clamp(S.avatar.x+dx,0,WORLD_W-1), ny=clamp(S.avatar.y+dy,0,WORLD_H-1);
+  S.avatar.x=nx; S.avatar.y=ny; S.secs += 1/S.avatar.spd;
+  const cell=S.tiles[ny][nx];
+  if(cell.res){ const n=NODES.find(n=>n.k===cell.res); gain(n.gain); log('Collected '+Object.entries(n.gain).map(([k,v])=>`${v} ${EM[k]}`).join(' and ')+' from '+n.k+'.'); cell.res=null; redrawTiles(); }
+  updateAvatar(); updateResAndMeta(); updateBuildButtons();
+}
+// Pixel-perfect highlight
+function showHL(tx,ty){
+  const z=S.cam.z;
+  hl.style.display='block';
+  hl.style.left=((tx*CELL - S.cam.x)*z)+'px';
+  hl.style.top=((ty*CELL - S.cam.y)*z)+'px';
+  hl.style.width=(CELL*z)+'px';
+  hl.style.height=(CELL*z)+'px';
+  hl.style.transform='none';
+}
+vp.addEventListener('mousemove',e=>{
+  if(!S.place){ hl.style.display='none'; return; }
+  const {wx,wy}=screenToWorld(e.clientX,e.clientY); const pos=worldToTile(wx,wy);
+  if(!pos){ hl.style.display='none'; return; } showHL(pos.tx,pos.ty);
+});
+vp.addEventListener('click',e=>{ if(!S.place) return; const {wx,wy}=screenToWorld(e.clientX,e.clientY); const p=worldToTile(wx,wy); if(!p) return; placeAt(S.place,p.tx,p.ty); });
+mapEl.addEventListener('click',e=>{ if(!S.place) return; e.stopPropagation(); const t=e.target.closest('.tile'); if(!t) return; placeAt(S.place,+t.dataset.x,+t.dataset.y); });
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape') exitPlacement('Placement cancelled.');
+  const dir={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]}[e.key];
+  if(dir){ e.preventDefault(); moveAvatar(dir[0],dir[1]); }
+});
+// pan/zoom
+vp.addEventListener('mousedown',e=>{ if(e.button!==0) return; S.cam.drag=true; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; vp.classList.add('dragging'); });
+window.addEventListener('mouseup',()=>{ S.cam.drag=false; vp.classList.remove('dragging'); });
+window.addEventListener('mousemove',e=>{ if(S.cam.drag){ const dx=e.clientX-S.cam.lastX, dy=e.clientY-S.cam.lastY; S.cam.x -= dx/S.cam.z; S.cam.y -= dy/S.cam.z; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; applyCam(); }});
+vp.addEventListener('wheel',e=>{ e.preventDefault(); const dir=Math.sign(e.deltaY); S.cam.z=clamp(S.cam.z*(dir>0?0.9:1.1),0.6,2.5); applyCam(); },{passive:false});
+
+function placeAt(k,x,y){
+  const cell=S.tiles[y][x]; if(cell.b){ toast("Tile occupied"); return; }
+  const b=BUILD.find(q=>q.k===k);
+  if(b.unique && S.b[k]){ toast("Only one allowed"); return; }
+  const cost = dynCost(k);
+  for(const [rk,rv] of Object.entries(cost)){ if((S.res[rk]||0) < rv){ toast("Not enough "+rk); return; } }
+  for(const [rk,rv] of Object.entries(cost)){ S.res[rk]-=rv; }
+  cell.res=null; cell.b=k; S.b[k]++; if(b.house){ let add=b.house; if(S.mods.cottageBonus && k==='cottage') add += S.mods.cottageBonus; S.res.housing += add; }
+  buildBuildList(); redrawTiles(); updateBuildButtons(); updateResAndMeta();
+  exitPlacement("Placed "+b.name+".");
+  log("Built "+b.name+" @ "+x+","+y);
+}
+
+// minimap
+const mini=$('#miniCanvas'); const mctx=mini.getContext('2d'); const miniRect=$('#miniView');
+function drawMinimap(){
+  const cw=mini.width, ch=mini.height;
+  mctx.fillStyle='#0b1130'; mctx.fillRect(0,0,cw,ch);
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const c=S.tiles[y][x];
+      if(!c.b) mctx.fillStyle='#16224a';
+      else{
+        const b=BUILD.find(t=>t.k===c.b);
+        const map={chief:'#6d5b3a', woodhut:'#3a6b5a', farm:'#5f7c3a', cottage:'#6b5a3a', quarry:'#555f7a', bakery:'#a3764a', inn:'#7a5ca6', claypit:'#7a5a4a', loom:'#8a8ab2', flaxfield:'#507d6b', mine:'#59606f', workshop:'#9c8b6b', shrine:'#a0a8d0', school:'#9fb7e6', market:'#d3a85a'};
+        mctx.fillStyle=map[b.k]||'#8aa';
+      }
+      const mx=Math.floor(x*cw/WORLD_W), my=Math.floor(y*ch/WORLD_H);
+      mctx.fillRect(mx,my,Math.ceil(cw/WORLD_W),Math.ceil(ch/WORLD_H));
+    }
+  }
+}
+function updateMiniViewRect(){
+  const cw=mini.clientWidth, ch=mini.clientHeight;
+  const vw = vp.clientWidth / (WORLD_W*CELL) / S.cam.z * cw;
+  const vh = vp.clientHeight / (WORLD_H*CELL) / S.cam.z * ch;
+  const vx = S.cam.x / (WORLD_W*CELL) * cw;
+  const vy = S.cam.y / (WORLD_H*CELL) * ch;
+  miniRect.style.left = vx+'px'; miniRect.style.top = vy+'px';
+  miniRect.style.width = vw+'px'; miniRect.style.height = vh+'px';
+}
+mini.parentElement.addEventListener('click',e=>{
+  const r=mini.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  S.cam.x = x*(WORLD_W*CELL) - vp.clientWidth/(2*S.cam.z);
+  S.cam.y = y*(WORLD_H*CELL) - vp.clientHeight/(2*S.cam.z);
+  applyCam();
+});
+
+// ===== gameplay
+function updateResAndMeta(){
+  RES.forEach(k=>$('#r_'+k).textContent=Math.floor(S.res[k]||0));
+  $('#tier').textContent=TIERS[S.tier].name; $('#day').textContent=S.day;
+  $('#season').textContent=SEASONS[S.season].name;
+  const h=Math.floor(S.secs/60)%24, m=Math.floor(S.secs%60);
+  $('#clock').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  $('#happy').textContent=Math.round(S.happy)+'%';
+  $('#techActive').textContent = 'Known: '+[...S.techs].join(', ');
+  $('#knCur').textContent = Math.floor(S.res.knowledge||0);
+}
+function updateBuildButtons(){
+  BUILD.forEach(b=>{
+    const cnt=document.getElementById('cnt_'+b.k); if(cnt) cnt.textContent=S.b[b.k];
+    const btn=document.getElementById('build_'+b.k); if(!btn) return;
+    const ok=Object.entries(dynCost(b.k)).every(([k,v])=>(S.res[k]||0)>=v) && (!b.need || S.techs.has(b.need)) && (!b.unique || !S.b[b.k]);
+    btn.disabled=!ok;
+  });
+}
+function prodMult(b){
+  let m = S.mods.allMult;
+  if(b.k==='woodhut') m*=S.mods.woodhutMult;
+  return m;
+}
+function produce(dtMinutes){
+  const dt = dtMinutes/60;
+  BUILD.forEach(b=>{
+    const n=S.b[b.k]; if(!n) return;
+    // consumption
+    if(b.use){
+      if(b.use.food){ let need=b.use.food*n*dt; if(b.k==='bakery') need*= (S.mods.bakeryFoodUse||1); const used=Math.min(need,S.res.food); S.res.food-=used; const r=need?used/need:1; if(b.prod && b.prod.gold) S.res.gold += b.prod.gold*n*r*dt*(S.mods.bakeryGold||1); }
+      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools){ let v=b.prod.tools*n*r*dt; if(S.mods.toolBonus) v*=1.2; S.res.tools += v; } }
+      if(b.use.wood){ const need=b.use.wood*n*dt; const used=Math.min(need,S.res.wood); S.res.wood-=used; }
+      if(b.use.flax){ const need=b.use.flax*n*dt; const used=Math.min(need,S.res.flax); S.res.flax-=used; const r=need?used/need:1; if(b.prod && b.prod.linen) S.res.linen += b.prod.linen*n*r*dt; }
+    }
+    // production
+    if(b.prod){
+      for(const k in b.prod){
+        if(k==='gold' && b.use && b.use.food) continue; // handled above
+        let v=b.prod[k]*n*prodMult(b);
+        if(b.k==='farm' && k==='food') v*=SEASONS[S.season].farm;
+        if(b.k==='inn' && k==='culture') v*=S.mods.innCulture;
+        S.res[k]+=v*dt;
+      }
+    }
+    if(b.mood) S.happy += b.mood*dt;
+  });
+
+  // Market passive
+  const mkt=S.b.market||0; if(mkt>0) S.res.gold += (0.02*mkt)*(S.res.pop*0.2 + S.res.culture*0.05)*dt;
+
+  // Pop growth & food
+  const spare=(S.res.housing||0)-(S.res.pop||0);
+  if(spare>0 && S.res.food>20) S.res.pop = Math.min(S.res.pop + 0.01*dt, S.res.housing);
+  const eat=Math.min(S.res.food, (S.res.pop*0.02)*dt); S.res.food -= eat;
+  if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
+  S.happy = clamp(S.happy, 50, 130);
+
+  // Time & season & tier
+  S.secs += dtMinutes;
+  if(S.secs>=24*60){ S.secs-=24*60; S.day++; if((S.day-1)%8===0){ S.season=(S.season+1)%SEASONS.length; log("Season is now "+SEASONS[S.season].name+"."); } }
+  const nxt=TIERS[S.tier+1]; if(nxt){ const ok=Object.entries(nxt.need).every(([k,v])=>(S.res[k]||0)>=v); if(ok){ S.tier++; log("Advanced to "+TIERS[S.tier].name+"!"); } }
+
+  // --- NEW: Knowledge chance from Chief’s Longhouse (every 10 minutes)
+  S.timers.chief += dtMinutes;
+  const chiefCount = S.b.chief||0;
+  while(S.timers.chief >= 10 && chiefCount>0){
+    const p = Math.min(0.6, 0.15*chiefCount + 0.01*(S.res.pop||0)); // 10-min cycle chance
+    if(Math.random() < p){ S.res.knowledge += 1; log("The elders share lore at the Chief’s Longhouse (+1 📜)."); }
+    S.timers.chief -= 10;
+  }
+
+  // --- NEW: Quarry rare finds (every 30 minutes per quarry)
+  S.timers.quarry += dtMinutes;
+  const qCount = S.b.quarry||0;
+  while(S.timers.quarry >= 30 && qCount>0){
+    for(let i=0;i<qCount;i++){
+      if(Math.random()<0.07){ S.res.iron += 1; log("Your quarry unearthed rich iron ore (+1 ⛓️)."); }
+      if(Math.random()<0.03){ S.res.gold += 1; log("A glimmer in the rock… gold! (+1 💰)."); }
+    }
+    S.timers.quarry -= 30;
+  }
+}
+
+// Tech Tree UI
+const TECH_DATA = TECH;
+const TECH_POS_MAP = TECH_POS;
+$('#btnTechTree').onclick=()=>{ openTechTree(); };
+$('#techClose').onclick=()=>{ closeTechTree(); };
+function openTechTree(){ $('#techModal').style.display='flex'; renderTechTree(); updateResAndMeta(); }
+function closeTechTree(){ $('#techModal').style.display='none'; $('#techCanvas').innerHTML=''; $('#techEdges').innerHTML=''; }
+function nodeStatus(id){
+  const node = TECH_DATA.find(t=>t.id===id);
+  const owned = S.techs.has(node.name);
+  if(owned) return 'owned';
+  const ok = node.prereq.every(pid=> S.techs.has(TECH_DATA.find(t=>t.id===pid).name));
+  return ok ? 'available' : 'locked';
+}
+function applyTechEffects(name){
+  switch(name){
+    case 'Masonry': S.mods.mineDiscount=0.15; S.mods.stoneForage=1.1; log("Masonry improves stonework (+10% stone scavenging, cheaper mines)."); break;
+    case 'Spirituality': S.happy+=5; log("Spirituality lifts hearts (+5 happiness)."); break;
+    case 'Learning': S.mods.woodhutMult=1.10; log("Learning boosts forestry (+10% woodcutters)."); break;
+    case 'Crafting': S.mods.toolBonus=true; S.mods.allMult*=1.10; log("Crafting refines output (+10% production, +20% tools)."); break;
+    case 'Trade Guilds': S.mods.innCulture=1.20; log("Trade Guilds make taverns livelier (+20% culture from Inns)."); break;
+    case 'Stone Roads': S.mods.allMult*=1.10; log("Stone Roads quicken every craft (+10% all production)."); break;
+    case 'Brewcraft': S.mods.bakeryGold=1.20; S.mods.bakeryFoodUse=1.10; log("Brewcraft enriches bakeries (+20% gold, +10% grain use)."); break;
+    case 'Governing Council': S.mods.cottageBonus=2; S.res.housing += 2*(S.b.cottage||0); log("Council grants better housing (+2 per Cottage)."); break;
+    case 'Exploration': S.avatar.spd*=1.5; log("Exploration trains swift scouts (+50% avatar speed)."); break;
+  }
+}
+function unlockTech(id){
+  const node=TECH_DATA.find(t=>t.id===id); const name=node.name;
+  if(nodeStatus(id)!=='available') return;
+  if((S.res.knowledge||0) < node.cost){ toast("Need "+node.cost+" 📜"); return; }
+  S.res.knowledge -= node.cost;
+  S.techs.add(name);
+  applyTechEffects(name);
+  rebuildBuildListForTech(); updateResAndMeta(); renderTechTree();
+}
+function renderTechTree(){
+  const canvas=$('#techCanvas'); const edges=$('#techEdges');
+  canvas.innerHTML=''; edges.innerHTML='';
+  TECH_DATA.forEach(n=>{
+    n.prereq.forEach(p=>{
+      const [x1,y1]=TECH_POS_MAP[p]; const [x2,y2]=TECH_POS_MAP[n.id];
+      const sx=x1+90, sy=y1+40, tx=x2, ty=y2+40;
+      const path=`M ${sx},${sy} C ${sx+80},${sy} ${tx-80},${ty} ${tx},${ty}`;
+      const l=document.createElementNS('http://www.w3.org/2000/svg','path');
+      l.setAttribute('d',path); l.setAttribute('fill','none'); l.setAttribute('stroke','#4a5aa0'); l.setAttribute('stroke-width','2'); l.setAttribute('opacity','0.8');
+      edges.appendChild(l);
+    });
+  });
+  TECH_DATA.forEach(n=>{
+    const [x,y]=TECH_POS_MAP[n.id];
+    const d=document.createElement('div'); d.className='node '+nodeStatus(n.id); d.style.left=x+'px'; d.style.top=y+'px';
+    const known=S.techs.has(n.name);
+    const prereqNames=n.prereq.map(pid=>TECH_DATA.find(t=>t.id===pid).name);
+    const unlockTxt = n.unlocks.length? 'Unlocks: '+n.unlocks.map(k=>BUILD.find(b=>b.k===k).name).join(', ') : '';
+    d.innerHTML=`<h4>${n.name}</h4>
+      <div class="desc">${n.desc}</div>
+      <div class="small">Prereq: ${prereqNames.length?prereqNames.join(', '):'None'}</div>
+      ${unlockTxt?`<div class="unlock">${unlockTxt}</div>`:''}
+      <div class="cost">Cost: 📜 ${n.cost}</div>
+      ${known?'<div class="small">Learned</div>':'<button class="btn">Research</button>'}`;
+    if(!known){
+      const btn=d.querySelector('button'); btn.disabled = nodeStatus(n.id)!=='available';
+      btn.onclick=()=>unlockTech(n.id);
+    }
+    canvas.appendChild(d);
+  });
+  $('#ownedCount').textContent = [...S.techs].length;
+}
+
+// Surprise discovery
+$('#btnDiscovery').onclick=()=>{
+  const cost = 40 + Math.max(0, [...S.techs].length-1)*30; // founding is free baseline
+  if((S.res.knowledge||0) < cost){ toast("Need "+cost+" 📜"); return; }
+  const remaining = TECH.filter(t=> !S.techs.has(t.name) && t.id!=='founding' && t.prereq.every(pid=>S.techs.has(TECH.find(x=>x.id===pid).name)));
+  if(remaining.length===0){ toast("No available techs. Open the Tech Tree."); return; }
+  const picks=[]; while(picks.length<Math.min(3,remaining.length)){ const c=remaining[Math.random()*remaining.length|0]; if(!picks.includes(c)) picks.push(c); }
+  S.res.knowledge -= cost;
+  const box=document.createElement('div'); box.className='bcard'; box.innerHTML='<div class="small"><b>Choose a discovery:</b></div>';
+  picks.forEach(d=>{ const btn=document.createElement('button'); btn.className='btn'; btn.style="margin-top:6px"; btn.textContent=d.name+' — '+d.desc;
+    btn.onclick=()=>{ S.techs.add(d.name); applyTechEffects(d.name); box.remove(); rebuildBuildListForTech(); updateResAndMeta(); log("Discovery: "+d.name); }; box.appendChild(btn); });
+  $('#techActive').after(box);
+};
+
+// Actions
+function gain(o){ Object.entries(o).forEach(([k,v])=>{
+  let add=v; if(k==='stone') add = Math.round(v*(S.mods.stoneForage||1));
+  S.res[k]=(S.res[k]||0)+add;
+}); updateResAndMeta(); updateBuildButtons(); }
+function cooldown(btn,ms){ btn.disabled=true; const base=btn.innerHTML; let t=ms/1000; const id=setInterval(()=>{ t--; btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; if(t<=0){ clearInterval(id); btn.innerHTML=base; btn.disabled=false; }},1000); }
+$('#gWood').onclick=e=>{ gain({wood:5}); cooldown(e.currentTarget,3000); log("Gathered fallen branches."); };
+$('#gFood').onclick=e=>{ gain({food:5}); cooldown(e.currentTarget,3000); log("Picked wild berries."); };
+$('#gStone').onclick=e=>{ gain({stone:3}); cooldown(e.currentTarget,5000); log("Scavenged stone."); };
+$('#gClay').onclick=e=>{ gain({clay:3}); cooldown(e.currentTarget,5000); log("Waded the creek for clay."); };
+$('#gFlax').onclick=e=>{ gain({flax:2}); cooldown(e.currentTarget,6000); log("Collected flax stalks."); };
+$('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
+$('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
+
+// bootstrap
+buildResourceRow(); buildBuildList(); ensureMap(); redrawTiles(); applyCam();
+updateResAndMeta(); updateBuildButtons();
+log("World seed: "+seedStr);
+log("Use arrow keys or WASD to explore and gather.");
+log("Your people gather around you, awaiting guidance.");
+S.speed = parseFloat(document.getElementById('speed').value||'1');
+let last=performance.now();
+function loop(ts){
+  const dtReal=(ts-last)/1000; last=ts;
+  const dtMinutes = dtReal * S.speed; if(dtMinutes>0) produce(dtMinutes);
+  updateResAndMeta(); updateBuildButtons(); drawMinimap();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
