@@ -40,6 +40,7 @@ h2{margin:4px 0 8px; font-size:18px}
       background:linear-gradient(180deg,#17264b,#15213f); user-select:none; pointer-events:auto}
 #avatar{position:absolute; width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:18px; pointer-events:none; z-index:5}
 .tile .l{position:absolute; right:4px; bottom:4px; font-size:10px; opacity:.85; color:#d8e1ff}
+.tile .grow{position:absolute; top:2px; left:2px; font-size:12px}
 #hl{position:absolute; border:2px dashed #9bd0ff; border-radius:8px; pointer-events:none; display:none}
 .minimap{background:#0f1430; border:1px solid var(--line); border-radius:10px; height:160px; position:relative; cursor:pointer}
 #miniCanvas{width:100%; height:100%}
@@ -257,6 +258,7 @@ const S={
   avatar:{x:24,y:15,spd:1},
   mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false},
   timers:{chief:0, quarry:0},
+  growing:false,
 };
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null}); } S.tiles.push(row); }
@@ -324,7 +326,12 @@ function ensureMap(){
 function redrawTiles(){
   $$('.tile',mapEl).forEach(el=>{
     const x=+el.dataset.x, y=+el.dataset.y; const cell=S.tiles[y][x];
-    if(cell.b){ const b=BUILD.find(q=>q.k===cell.b); el.innerHTML=`<div>${b.ic}</div><span class="l">${b.name.split(' ')[0]}</span>`; }
+    if(cell.b){
+      const b=BUILD.find(q=>q.k===cell.b);
+      let extra='';
+      if(S.growing && b.house) extra = '<span class="grow" title="Growing">👶</span>';
+      el.innerHTML=`<div>${b.ic}</div>${extra}<span class="l">${b.name.split(' ')[0]}</span>`;
+    }
     else if(cell.res){ const n=NODES.find(n=>n.k===cell.res); el.innerHTML=`<div>${n.em}</div><span class="l"></span>`; }
     else el.innerHTML='<span class="l"></span>';
   });
@@ -488,7 +495,12 @@ function produce(dtMinutes){
 
   // Pop growth & food
   const spare=(S.res.housing||0)-(S.res.pop||0);
-  if(spare>0 && S.res.food>20) S.res.pop = Math.min(S.res.pop + 0.01*dt, S.res.housing);
+  const prev=Math.floor(S.res.pop||0);
+  const growing = spare>0 && S.res.food>20;
+  if(growing) S.res.pop = Math.min(S.res.pop + 0.01*dt, S.res.housing);
+  const now=Math.floor(S.res.pop||0);
+  if(now>prev) log(`+${now-prev} population: spare housing & food surplus`);
+  if(growing !== S.growing){ S.growing = growing; redrawTiles(); }
   const eat=Math.min(S.res.food, (S.res.pop*0.02)*dt); S.res.food -= eat;
   if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
   S.happy = clamp(S.happy, 50, 130);
