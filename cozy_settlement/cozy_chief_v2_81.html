@@ -370,7 +370,7 @@ mapEl.addEventListener('click',e=>{
   const cell=S.tiles[y][x];
   if(cell.res){
     const n=NODES.find(n=>n.k===cell.res);
-    $('#planner').innerHTML = `${n.em} <b>${n.k}</b><br><span class="small">Yield: ${Object.entries(n.gain).map(([k,v])=>\`${v} ${EM[k]}\`).join(', ')}</span>`;
+    $('#planner').innerHTML = `${n.em} <b>${n.k}</b><br><span class="small">Yield: ${Object.entries(n.gain).map(([k,v])=>`${v} ${EM[k]}`).join(', ')}</span>`;
   } else {
     $('#planner').textContent='Select a building to enter placement mode, then click a tile on the map.';
   }
