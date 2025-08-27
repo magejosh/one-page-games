@@ -323,7 +323,7 @@ vp.addEventListener('mousemove',e=>{
   if(!pos){ hl.style.display='none'; return; } showHL(pos.tx,pos.ty);
 });
 vp.addEventListener('click',e=>{ if(!S.place) return; const {wx,wy}=screenToWorld(e.clientX,e.clientY); const p=worldToTile(wx,wy); if(!p) return; placeAt(S.place,p.tx,p.ty); });
-mapEl.addEventListener('click',e=>{ if(!S.place) return; const t=e.target.closest('.tile'); if(!t) return; placeAt(S.place,+t.dataset.x,+t.dataset.y); });
+mapEl.addEventListener('click',e=>{ if(!S.place) return; e.stopPropagation(); const t=e.target.closest('.tile'); if(!t) return; placeAt(S.place,+t.dataset.x,+t.dataset.y); });
 window.addEventListener('keydown',e=>{ if(e.key==='Escape') exitPlacement('Placement cancelled.'); });
 // pan/zoom
 vp.addEventListener('mousedown',e=>{ if(e.button!==0) return; S.cam.drag=true; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; vp.classList.add('dragging'); });
