@@ -561,10 +561,6 @@ $('#gFlax').onclick=e=>{ gain({flax:2}); cooldown(e.currentTarget,6000); log("Co
 $('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
 $('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
 
-// Tech modal open/close
-$('#btnTechTree').onclick=()=>{ openTechTree(); };
-$('#techClose').onclick=()=>{ closeTechTree(); };
-
 // bootstrap
 buildResourceRow(); buildBuildList(); ensureMap(); redrawTiles(); applyCam();
 updateResAndMeta(); updateBuildButtons();
