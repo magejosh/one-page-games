@@ -281,6 +281,7 @@ function enterPlacement(k){
 }
 function exitPlacement(msg){
   S.place=null; $('#placingText').textContent=''; if(msg) $('#planner').textContent=msg;
+  hl.style.display='none';
 }
 
 // ===== Map & camera
