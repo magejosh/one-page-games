@@ -16,7 +16,7 @@
 
 ### 2. Unique Chief's Longhouse
 - Only one Longhouse may exist at a time.
-- New default emoji: **🛖**.
+- New default emoji: **🏰**.
 - Acts as a hub for narrative events and knowledge generation.
 - Tech upgrades:
   - **Council Hall** – boosts knowledge gain and unlocks policy choices.
@@ -40,7 +40,7 @@
 
 ## Changelog Highlights
 - Introduced avatar‑based resource gathering and exploration.
-- Chief's Longhouse is now a unique, upgradeable structure (**🛖**).
+- Chief's Longhouse is now a unique, upgradeable structure (**🏰**).
 - Stone Quarry emoji replaced with **⛏️** for better compatibility.
 - Tech tree expanded with new thematic branches influenced by *Realmwrights* and *Dominion*.
 - Added procedural resource nodes and world seeds.
