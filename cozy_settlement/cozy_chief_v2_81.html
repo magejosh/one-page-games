@@ -276,6 +276,10 @@ function buildResourceRow(){
     const v = S.res[k]||0;
     const disp = k==='pop' ? v.toFixed(1) : Math.floor(v);
     pill.innerHTML = `${EM[k]} <b id="r_${k}">${disp}</b> <span class="small" style="margin-left:4px">${k}</span>`;
+    if(k==='pop'){
+      pill.id = 'pill_pop';
+      pill.title = `${v.toFixed(1)} / ${Math.floor(S.res.housing||0)} housing`;
+    }
     row.appendChild(pill);
   });
 }
@@ -430,6 +434,9 @@ function updateResAndMeta(){
     const v=S.res[k]||0;
     const disp = k==='pop' ? v.toFixed(1) : Math.floor(v);
     $('#r_'+k).textContent=disp;
+    if(k==='pop'){
+      $('#pill_pop').title = `${v.toFixed(1)} / ${Math.floor(S.res.housing||0)} housing`;
+    }
   });
   $('#tier').textContent=TIERS[S.tier].name;
   const nxt=TIERS[S.tier+1];
