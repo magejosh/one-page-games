@@ -1459,7 +1459,25 @@ function gain(o){ Object.entries(o).forEach(([k,v])=>{
   let add=v; if(k==='stone') add = Math.round(v*(S.mods.stoneForage||1));
   S.res[k]=(S.res[k]||0)+add;
 }); updateResAndMeta(); updateBuildButtons(); }
-function cooldown(btn,ms){ btn.disabled=true; btn.dataset.cd='1'; const base=btn.innerHTML; let t=ms/1000; const id=setInterval(()=>{ t--; btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; if(t<=0){ clearInterval(id); btn.innerHTML=base; btn.dataset.cd='0'; updateActionButtons(); }},1000); }
+function cooldown(btn,ms){
+  btn.disabled=true;
+  btn.dataset.cd='1';
+  const base=btn.innerHTML;
+  let t=ms/1000;
+  btn.endCooldown=()=>{
+    btn.innerHTML=base;
+    btn.dataset.cd='0';
+    updateActionButtons();
+  };
+  const id=setInterval(()=>{
+    t--;
+    btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`;
+    if(t<=0){
+      clearInterval(id);
+      btn.endCooldown();
+    }
+  },1000);
+}
 function collectNode(type,gainObj,cd,msg,btn){
   const cell=S.tiles[S.avatar.y][S.avatar.x];
   if(!cell.res || cell.res.k!==type){ log('Nothing to gather here.'); return; }
