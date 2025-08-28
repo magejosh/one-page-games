@@ -413,8 +413,8 @@ const OCEAN_MAX_DEPTH=3+(rng()*3|0);
 
 function randTerrain(x,y){
   const r=noise2d(x+1000,y+1000);
-  if(r<0.75) return 'plains';
-  if(r<0.9) return 'forest';
+  if(r<0.45) return 'plains';
+  if(r<0.75) return 'forest';
   return 'hill';
 }
 
@@ -495,7 +495,7 @@ const S={
 let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null,terrain:randTerrain(x,y)}); } S.tiles.push(row); }
-addOcean(); addLake(); addRivers(); smoothBiomes(1);
+addOcean(); addLake(); addRivers(); smoothBiomes(0);
 let critters=[];
 function randAmt(k){
   const n=NODES.find(n=>n.k===k);
