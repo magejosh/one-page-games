@@ -536,6 +536,7 @@ const S={
   policy:{prod:1, knowledge:1, gold:1, culture:1, faith:1},
   didFirstGather:false,
   growing:false,
+  lastDungeonSpawnDay:0,
 };
 let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
@@ -561,40 +562,36 @@ function scatterNodes(){
       S.tiles[y][x].res={k,left:amt,resources:amt,resourceCap:amt};
     }
   };
-  place('tree',60); place('berry',40); place('stone',30); place('clay',25); place('flax',20); place('dungeon',3);
-}
-scatterNodes();
+    place('tree',60); place('berry',40); place('stone',30); place('clay',25); place('flax',20);
+  }
+  scatterNodes();
 
-function spawnCritter(){
-  const c={x:rng()*WORLD_W|0,y:rng()*WORLD_H|0,type:rng()<0.2?'monster':'animal'};
+const MAX_ANIMALS = 8;
+const MAX_MONSTERS = 8;
+let animalTimer = 0;
+
+function countCritters(type){
+  return critters.filter(c=>c.type===type).length;
+}
+
+function spawnAnimal(){
+  if(countCritters('animal') >= MAX_ANIMALS) return;
+  const c={x:rng()*WORLD_W|0,y:rng()*WORLD_H|0,type:'animal'};
   const el=document.createElement('div'); el.className='critter';
-  el.textContent = c.type==='monster'?'👾':'🐇';
+  el.textContent='🐇';
   el.style.left=(c.x*CELL)+'px'; el.style.top=(c.y*CELL)+'px';
   c.el=el; mapEl.appendChild(el); critters.push(c);
 }
-let critterTimer=0;
-function updateCritters(dt){
-  critterTimer+=dt;
-  if(critterTimer>5){ spawnCritter(); critterTimer=0; }
-  critters.forEach(c=>{
-    if(rng()<0.02){
-      const dx=(rng()*3|0)-1, dy=(rng()*3|0)-1;
-      c.x=clamp(c.x+dx,0,WORLD_W-1); c.y=clamp(c.y+dy,0,WORLD_H-1);
-      c.el.style.left=(c.x*CELL)+'px'; c.el.style.top=(c.y*CELL)+'px';
-    }
-  });
-}
 
-// Override: smarter critters with defenses
-function spawnCritter(){
-  const towerCnt = S.b.tower||0, guildCnt=S.b.guild||0;
-  const base = 0.2; const reduce = 0.15*towerCnt + 0.2*guildCnt; const chance = Math.max(0.02, base*(1-reduce));
-  const c={x:rng()*WORLD_W|0,y:rng()*WORLD_H|0,type:rng()<chance?'monster':'animal'};
+function spawnMonsterAt(x,y){
+  if(countCritters('monster') >= MAX_MONSTERS) return;
+  const c={x,y,type:'monster'};
   const el=document.createElement('div'); el.className='critter';
-  el.textContent = c.type==='monster'?'👾':'🐇';
+  el.textContent='👾';
   el.style.left=(c.x*CELL)+'px'; el.style.top=(c.y*CELL)+'px';
   c.el=el; mapEl.appendChild(el); critters.push(c);
 }
+
 function nearbyDefense(x,y){
   const r=4;
   for(let yy=Math.max(0,y-r); yy<=Math.min(WORLD_H-1,y+r); yy++){
@@ -604,11 +601,40 @@ function nearbyDefense(x,y){
   }
   return false;
 }
-const _updateCrittersRaw = updateCritters;
-updateCritters = function(dt){
-  // call original movement/spawn
-  _updateCrittersRaw(dt);
-  // defense check clears nearby monsters
+
+function spawnDungeon(){
+  let x,y,tries=0;
+  do{
+    x=rng()*WORLD_W|0; y=rng()*WORLD_H|0; tries++;
+  }while((S.tiles[y][x].res || S.tiles[y][x].b || S.tiles[y][x].terrain==='water') && tries<200);
+  const cell=S.tiles[y][x];
+  if(cell.res || cell.b || cell.terrain==='water') return;
+  cell.res={k:'dungeon',left:1,resources:1,resourceCap:1};
+  redrawTiles();
+  log('A dungeon emerges from the earth.');
+}
+
+function spawnMonstersFromDungeons(){
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const cell=S.tiles[y][x];
+      if(cell.res && cell.res.k==='dungeon'){
+        spawnMonsterAt(x,y);
+      }
+    }
+  }
+}
+
+function updateCritters(dt){
+  animalTimer += dt;
+  if(animalTimer > 60){ spawnAnimal(); animalTimer = 0; }
+  critters.forEach(c=>{
+    if(rng()<0.02){
+      const dx=(rng()*3|0)-1, dy=(rng()*3|0)-1;
+      c.x=clamp(c.x+dx,0,WORLD_W-1); c.y=clamp(c.y+dy,0,WORLD_H-1);
+      c.el.style.left=(c.x*CELL)+'px'; c.el.style.top=(c.y*CELL)+'px';
+    }
+  });
   const removed=[];
   critters.forEach((c,i)=>{
     if(c.type==='monster' && nearbyDefense(c.x,c.y)){
@@ -619,7 +645,6 @@ updateCritters = function(dt){
       }
     }
   });
-  // remove in reverse order
   removed.sort((a,b)=>b-a).forEach(i=>critters.splice(i,1));
 }
 
@@ -733,12 +758,28 @@ mapEl.addEventListener('click',e=>{
       const c=critters[idx];
       const dist=Math.abs(S.avatar.x-c.x)+Math.abs(S.avatar.y-c.y);
       if(dist>1){ log('Move closer to engage.'); return; }
-      if(c.type==='monster'){ S.res.gold+=20; log('Monster defeated (+20 gold).'); }
-      else { S.res.hide+=1; log('Hunted animal (+1 hide).'); }
-      crit.remove(); critters.splice(idx,1); updateResAndMeta();
+        if(c.type==='monster'){
+          S.res.gold+=20;
+          if(Math.random()<0.3){
+            S.res.knowledge=(S.res.knowledge||0)+1;
+            log('Monster defeated (+20 gold, +1 knowledge).');
+          } else {
+            log('Monster defeated (+20 gold).');
+          }
+        }
+        else {
+          S.res.hide+=1;
+          if(Math.random()<0.5){
+            S.res.meat=(S.res.meat||0)+1;
+            log('Hunted animal (+1 hide, +1 meat).');
+          } else {
+            log('Hunted animal (+1 hide).');
+          }
+        }
+        crit.remove(); critters.splice(idx,1); updateResAndMeta();
+      }
+      return;
     }
-    return;
-  }
   const t=e.target.closest('.tile'); if(!t) return; e.stopPropagation();
   const x=+t.dataset.x, y=+t.dataset.y;
   if(S.place){ placeAt(S.place,x,y); return; }
@@ -1249,10 +1290,18 @@ while (lastPop < now) {
   if(S.res.food<5) S.happy -= 0.05*dt; else S.happy += 0.02*dt;
   S.happy = clamp(S.happy, 50, 130);
 
-  // Time & season & tier
-  S.secs += dtMinutes;
-  if(S.secs>=24*60){ S.secs-=24*60; S.day++; if((S.day-1)%8===0){ S.season=(S.season+1)%SEASONS.length; log("Season is now "+SEASONS[S.season].name+"."); } }
-  const nxt=TIERS[S.tier+1]; if(nxt){ const ok=Object.entries(nxt.need).every(([k,v])=>(S.res[k]||0)>=v); if(ok){ S.tier++; log("Advanced to "+TIERS[S.tier].name+"!"); } }
+    // Time & season & tier
+    S.secs += dtMinutes;
+    if(S.secs>=24*60){
+      S.secs-=24*60; S.day++;
+      spawnMonstersFromDungeons();
+      if((S.day-1)%8===0){ S.season=(S.season+1)%SEASONS.length; log("Season is now "+SEASONS[S.season].name+"."); }
+    }
+    if(Math.floor(S.secs/60)>=12 && S.lastDungeonSpawnDay!==S.day){
+      spawnDungeon();
+      S.lastDungeonSpawnDay=S.day;
+    }
+    const nxt=TIERS[S.tier+1]; if(nxt){ const ok=Object.entries(nxt.need).every(([k,v])=>(S.res[k]||0)>=v); if(ok){ S.tier++; log("Advanced to "+TIERS[S.tier].name+"!"); } }
 
   // --- NEW: Knowledge chance from Chief’s Longhouse (every 10 minutes)
   S.timers.chief += dtMinutes;
@@ -1685,8 +1734,9 @@ $('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
 $('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
 
 // bootstrap
-buildResourceRow(); buildBuildList(); ensureMap(); redrawTiles(); centerOnAvatar();
-updateResAndMeta(); updateBuildButtons(); updateActionButtons(); renderQuests();
+  buildResourceRow(); buildBuildList(); ensureMap(); redrawTiles(); centerOnAvatar();
+  spawnAnimal();
+  updateResAndMeta(); updateBuildButtons(); updateActionButtons(); renderQuests();
 log("World seed: "+seedStr);
 log("Use arrow keys or WASD to explore and gather.");
 log("Your people gather around you, awaiting guidance.");
