@@ -1459,20 +1459,38 @@ function gain(o){ Object.entries(o).forEach(([k,v])=>{
   let add=v; if(k==='stone') add = Math.round(v*(S.mods.stoneForage||1));
   S.res[k]=(S.res[k]||0)+add;
 }); updateResAndMeta(); updateBuildButtons(); }
-function cooldown(btn,ms){ btn.disabled=true; btn.dataset.cd='1'; const base=btn.innerHTML; let t=ms/1000; const id=setInterval(()=>{ t--; btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; if(t<=0){ clearInterval(id); btn.innerHTML=base; btn.dataset.cd='0'; updateActionButtons(); }},1000); }
+function cooldown(btn,ms){
+  btn.disabled=true;
+  btn.dataset.cd='1';
+  const base=btn.innerHTML;
+  let t=Math.ceil(ms/1000);
+  const show=()=>{ btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; };
+  show();
+  const id=setInterval(()=>{
+    t--;
+    if(t<=0){
+      clearInterval(id);
+      btn.innerHTML=base;
+      btn.disabled=false;
+      btn.dataset.cd='0';
+      updateActionButtons();
+    } else show();
+  },1000);
+}
 function collectNode(type,gainObj,cd,msg,btn){
   const cell=S.tiles[S.avatar.y][S.avatar.x];
-  if(!cell.res || cell.res.k!==type){ log('Nothing to gather here.'); return; }
+  if(!cell || !cell.res || cell.res.k!==type){ log('Nothing to gather here.'); return; }
+  cooldown(btn,cd);
   const key=Object.keys(gainObj)[0];
   const per=gainObj[key];
-  const amt=Math.min(per, cell.res.left);
-  const g={}; g[key]=amt; gain(g);
-  cell.res.left -= amt;
+  const amt=Math.min(per, cell.res.left||0);
+  gain({[key]:amt});
+  cell.res.left-=amt;
   if(cell.res.left<=0){ cell.res=null; }
   redrawTiles();
-  // Mark first-time gather for tutorial
   if(!S.didFirstGather){ S.didFirstGather=true; updateQuests(); }
-  cooldown(btn,cd); log(msg); updateActionButtons();
+  log(msg);
+  updateActionButtons();
 }
 const btnWood=$('#gWood'); btnWood.addEventListener('click',()=>collectNode('tree',{wood:5},3000,'Chopped wood.',btnWood));
 const btnFood=$('#gFood'); btnFood.addEventListener('click',()=>collectNode('berry',{food:5},3000,'Picked wild berries.',btnFood));
