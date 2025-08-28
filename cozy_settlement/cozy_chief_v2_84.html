@@ -1044,20 +1044,76 @@ function produce(dtMinutes){
   const dt = dtMinutes/60;
   BUILD.forEach(b=>{
     const n=S.b[b.k]; if(!n) return;
+    const skip={};
     // consumption
     if(b.use){
-      if(b.use.food){ let need=b.use.food*n*dt; if(b.k==='bakery') need*= (S.mods.bakeryFoodUse||1); const used=Math.min(need,S.res.food); S.res.food-=used; const r=need?used/need:1; if(b.prod && b.prod.gold) S.res.gold += b.prod.gold*n*r*dt*(S.mods.bakeryGold||1); }
-      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools){ let v=b.prod.tools*n*r*dt; if(S.mods.toolBonus) v*=1.2; v*= (S.mods.toolNerf||1); S.res.tools += v; } }
-      if(b.use.wood){ const need=b.use.wood*n*dt; const used=Math.min(need,S.res.wood); S.res.wood-=used; }
-      if(b.use.flax){ const need=b.use.flax*n*dt; const used=Math.min(need,S.res.flax); S.res.flax-=used; const r=need?used/need:1; if(b.prod && b.prod.linen) S.res.linen += b.prod.linen*n*r*dt; }
-      if(b.use.tools){ const need=b.use.tools*n*dt; const used=Math.min(need,S.res.tools||0); S.res.tools=(S.res.tools||0)-used; }
-      if(b.use.mana){ const need=b.use.mana*n*dt; const used=Math.min(need,S.res.mana||0); S.res.mana=(S.res.mana||0)-used; if(b.k==='enchanter' && used>0){ S.enchantBuffTimer = Math.min((S.enchantBuffTimer||0)+2*used, 20); } }
-      if(b.use.meat){ const need=b.use.meat*n*dt; const used=Math.min(need,S.res.meat||0); S.res.meat=(S.res.meat||0)-used; const r=need?used/need:1; if(b.prod && b.prod.food) S.res.food += b.prod.food*n*r*dt; }
+      if(b.use.food){
+        let need=b.use.food*n*dt;
+        if(b.k==='bakery') need*= (S.mods.bakeryFoodUse||1);
+        const used=Math.min(need,S.res.food);
+        S.res.food-=used;
+        const r=need?used/need:1;
+        if(b.prod && b.prod.gold){
+          S.res.gold += b.prod.gold*n*r*dt*(S.mods.bakeryGold||1);
+          skip.gold=true;
+        }
+      }
+      if(b.use.iron){
+        const need=b.use.iron*n*dt;
+        const used=Math.min(need,S.res.iron);
+        S.res.iron-=used;
+        const r=need?used/need:1;
+        if(b.prod && b.prod.tools){
+          let v=b.prod.tools*n*r*dt*prodMult(b);
+          if(S.mods.toolBonus) v*=1.2;
+          v*= (S.mods.toolNerf||1);
+          S.res.tools += v;
+          skip.tools=true;
+        }
+      }
+      if(b.use.wood){
+        const need=b.use.wood*n*dt;
+        const used=Math.min(need,S.res.wood);
+        S.res.wood-=used;
+      }
+      if(b.use.flax){
+        const need=b.use.flax*n*dt;
+        const used=Math.min(need,S.res.flax);
+        S.res.flax-=used;
+        const r=need?used/need:1;
+        if(b.prod && b.prod.linen){
+          S.res.linen += b.prod.linen*n*r*dt*prodMult(b);
+          skip.linen=true;
+        }
+      }
+      if(b.use.tools){
+        const need=b.use.tools*n*dt;
+        const used=Math.min(need,S.res.tools||0);
+        S.res.tools=(S.res.tools||0)-used;
+      }
+      if(b.use.mana){
+        const need=b.use.mana*n*dt;
+        const used=Math.min(need,S.res.mana||0);
+        S.res.mana=(S.res.mana||0)-used;
+        if(b.k==='enchanter' && used>0){
+          S.enchantBuffTimer = Math.min((S.enchantBuffTimer||0)+2*used, 20);
+        }
+      }
+      if(b.use.meat){
+        const need=b.use.meat*n*dt;
+        const used=Math.min(need,S.res.meat||0);
+        S.res.meat=(S.res.meat||0)-used;
+        const r=need?used/need:1;
+        if(b.prod && b.prod.food){
+          S.res.food += b.prod.food*n*r*dt*prodMult(b);
+          skip.food=true;
+        }
+      }
     }
     // production
     if(b.prod){
       for(const k in b.prod){
-        if(k==='gold' && b.use && b.use.food) continue; // handled above
+        if(skip[k]) continue; // handled in consumption
         let v=b.prod[k]*n*prodMult(b);
         if(b.k==='farm' && k==='food') v*=SEASONS[S.season].farm;
         if(b.k==='inn' && k==='culture') v*=S.mods.innCulture;
