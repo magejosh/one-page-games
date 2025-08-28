@@ -22,6 +22,8 @@ header,footer{padding:10px 12px; background:linear-gradient(180deg,var(--panel),
   #resRow .small{display:none;}
 }
 .pill{background:#0c1125; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-weight:800}
+/* Keep resource pills on one line (emoji, count, key) */
+#resRow .pill{display:inline-flex; align-items:center; gap:6px; white-space:nowrap; min-width:max-content}
 .small{font-size:12px; color:#c8d2ff}
 .grid{display:grid; grid-template-columns: 320px 1fr 260px; gap:10px; padding:10px}
 .panel{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:12px; padding:10px; overflow:auto}
