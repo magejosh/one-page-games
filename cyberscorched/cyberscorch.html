@@ -429,13 +429,11 @@ function setupRound(){
 $("#continueBtn").addEventListener("click", ()=>{
   preRound.classList.add("hidden");
   gamewrap.classList.remove("hidden");
-  // Begin active play and kick off the main loop
-  // Previously the round transitioned to the play phase and drew a single
-  // frame, but the animation/update loop never started which left the game
-  // unresponsive.  Starting with `step()` initializes the loop so input and
-  // projectile physics run as expected.
+  // Begin active play and kick off the main loop. Using
+  // `requestAnimationFrame` ensures the first update happens on the next
+  // frame and prevents the game from stalling before controls become active.
   state.phase="play";
-  step();
+  requestAnimationFrame(step);
 });
 
 function makeTerrain(){
