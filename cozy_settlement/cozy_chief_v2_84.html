@@ -393,7 +393,12 @@ let seed=0; for(let i=0;i<seedStr.length;i++) seed=(seed*31+seedStr.charCodeAt(i
 function rng(){ seed^=seed<<13; seed^=seed>>>17; seed^=seed<<5; return (seed>>>0)/4294967296; }
 
 // ===== state
-const TERRAIN=[{k:'plains',color:'#17264b'},{k:'forest',color:'#1b3d1b'},{k:'hill',color:'#3b2f1b'},{k:'water',color:'#113353'}];
+const TERRAIN=[
+  {k:'plains',color:'#3a6b35'},
+  {k:'forest',color:'#1e4422'},
+  {k:'hill',color:'#82693d'},
+  {k:'water',color:'#2a4c8d'}
+];
 // simple deterministic hash for consistent noise per tile
 function noise2d(x,y){
   let s=x*374761393 + y*668265263 + seed*31;
@@ -774,8 +779,10 @@ function drawMinimap(){
   for(let y=0;y<WORLD_H;y++){
     for(let x=0;x<WORLD_W;x++){
       const c=S.tiles[y][x];
-      if(!c.b) mctx.fillStyle='#16224a';
-      else{
+      if(!c.b){
+        const terr=TERRAIN.find(t=>t.k===c.terrain);
+        mctx.fillStyle=terr?terr.color:'#16224a';
+      } else {
         const b=BUILD.find(t=>t.k===c.b);
         const map={chief:'#6d5b3a', woodhut:'#3a6b5a', farm:'#5f7c3a', cottage:'#6b5a3a', quarry:'#555f7a', bakery:'#a3764a', inn:'#7a5ca6', claypit:'#7a5a4a', loom:'#8a8ab2', flaxfield:'#507d6b', mine:'#59606f', workshop:'#9c8b6b', shrine:'#a0a8d0', school:'#9fb7e6', market:'#d3a85a'};
         mctx.fillStyle=map[b.k]||'#8aa';
