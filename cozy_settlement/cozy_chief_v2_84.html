@@ -415,7 +415,7 @@ const OCEAN_MAX_DEPTH=3+(rng()*3|0);
 function randTerrain(x,y){
   const r=noise2d(x+1000,y+1000);
   if(r<0.45) return 'plains';
-  if(r<0.75) return 'forest';
+  if(r<0.875) return 'forest';
   return 'hill';
 }
 
@@ -476,6 +476,28 @@ function clusterForests(iter=2){
   }
 }
 
+function clusterHills(iter=2){
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(let t=0;t<iter;t++){
+    const copy=S.tiles.map(row=>row.map(c=>c.terrain));
+    for(let y=0;y<WORLD_H;y++){
+      for(let x=0;x<WORLD_W;x++){
+        const cur=copy[y][x];
+        if(cur==='water') continue;
+        let h=0;
+        for(const [dx,dy] of dirs){
+          const nx=x+dx, ny=y+dy;
+          if(nx>=0&&ny>=0&&nx<WORLD_W&&ny<WORLD_H){
+            if(copy[ny][nx]==='hill') h++;
+          }
+        }
+        if(cur!=='hill' && h>=3) S.tiles[y][x].terrain='hill';
+        else if(cur==='hill' && h<=1) S.tiles[y][x].terrain='plains';
+      }
+    }
+  }
+}
+
 function smoothBiomes(iter=1){
   const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   for(let t=0;t<iter;t++){
@@ -518,7 +540,7 @@ const S={
 let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null,terrain:randTerrain(x,y)}); } S.tiles.push(row); }
-addOcean(); addLake(); addRivers(); clusterForests();
+addOcean(); addLake(); addRivers(); clusterForests(); clusterHills();
 let critters=[];
 function randAmt(k){
   const n=NODES.find(n=>n.k===k);
@@ -986,6 +1008,7 @@ function prodMult(b){
   }
   if(b.k==='quarry'){
     if(S.terrain.quarryTotal>0){ m *= (1 + 0.1 * (S.terrain.quarryOnHill / S.terrain.quarryTotal)); }
+    m*=stoneAdjMult();
   }
   // adjacency synergies: farms and wheat fields
   if(b.k==='farm') m *= avgAdjMult('farm','wheatfield',0.15);
@@ -1026,6 +1049,26 @@ function treeAdjMult(type){
           if(nx>=0&&ny>=0&&nx<WORLD_W&&ny<WORLD_H){
             const r=S.tiles[ny][nx].res;
             if(r && r.k==='tree' && (r.left||0)>0){ adj++; break; }
+          }
+        }
+      }
+    }
+  }
+  return count? (1 + adj/count) : 1;
+}
+
+function stoneAdjMult(){
+  let count=0, adj=0;
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      if(S.tiles[y][x].b==='quarry'){
+        count++;
+        const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+        for(const [dx,dy] of dirs){
+          const nx=x+dx, ny=y+dy;
+          if(nx>=0&&ny>=0&&nx<WORLD_W&&ny<WORLD_H){
+            const r=S.tiles[ny][nx].res;
+            if(r && r.k==='stone' && (r.left||0)>0){ adj++; break; }
           }
         }
       }
@@ -1594,6 +1637,7 @@ function collectNode(type,gainObj,cd,msg,btn){
   const key=Object.keys(gainObj)[0];
   let per=gainObj[key];
   if(type==='tree' && cell.terrain==='forest') per*=2;
+  if(type==='stone' && cell.terrain==='hill') per*=2;
   const amt=Math.min(per, cell.res.left||0);
   gain({[key]:amt});
   cell.res.left = Math.max(0, (cell.res.left||0) - amt);
