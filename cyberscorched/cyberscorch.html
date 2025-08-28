@@ -792,8 +792,21 @@ function aiAct(){
   if(!target){ nextTurn(); return }
   // Choose weapon
   const inv = tk.ref.inventory;
-  const pick = (tk.ref.diff==="Insane"||tk.ref.diff==="Hard") && (inv["heavy"]>0 || inv["nuke"]>0) ? (inv["nuke"]>0?"nuke":"heavy") :
-               inv["shell"]>0?"shell": (inv["heavy"]>0?"heavy":"mirv");
+  const available = WEAPONS.map(w=>w.id).filter(id => (inv[id]||0) > 0);
+  if(available.length===0){
+    nextTurn();
+    return;
+  }
+  let pick;
+  if((tk.ref.diff==="Insane"||tk.ref.diff==="Hard") && (available.includes("heavy") || available.includes("nuke"))){
+    pick = available.includes("nuke") ? "nuke" : "heavy";
+  } else if(available.includes("shell")){
+    pick = "shell";
+  } else if(available.includes("heavy")){
+    pick = "heavy";
+  } else {
+    pick = available[0];
+  }
   tk.weapon = pick;
   // Aim estimation (no-wind solver baseline, then add difficulty error)
   const dx = (target.x - tk.x);
