@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CyberScorch — Neon Artillery</title>
+<style>
+:root{
+  --bg0:#0a0f1f;
+  --bg1:#0f1631;
+  --neon1:#00ffd1;
+  --neon2:#ff38a7;
+  --neon3:#7afcff;
+  --txt:#e8f6ff;
+  --glass: rgba(255,255,255,0.07);
+  --glass2: rgba(0,255,209,0.09);
+  --danger:#ff3b6b;
+  --ok:#00ffaa;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:
+ radial-gradient(1200px 600px at 20% 10%, #11183b44 0%, transparent 60%),
+ radial-gradient(800px 500px at 80% 90%, #2a0a2f44 0%, transparent 60%),
+ linear-gradient(180deg,var(--bg0),var(--bg1));
+ color:var(--txt); font:400 16px/1.4 system-ui,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;
+}
+/* subtle scanlines */
+body:before{content:"";position:fixed;inset:0;pointer-events:none;
+background: repeating-linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0.02) 1px, transparent 2px, transparent 4px); mix-blend-mode:overlay}
+h1,h2,h3{margin:0 0 .5rem 0; letter-spacing:.5px}
+a{color:var(--neon3)}
+button,input,select{background:#0c1024;border:1px solid #29306b;color:var(--txt);padding:.5rem .7rem;border-radius:10px;outline:none}
+button{cursor:pointer; transition:.15s transform ease,.2s box-shadow ease}
+button:hover{transform:translateY(-1px); box-shadow:0 0 0 2px var(--glass2), 0 0 18px -4px var(--neon1)}
+button.primary{background:linear-gradient(90deg,var(--neon2),var(--neon1)); border:none; color:#071414;font-weight:700}
+input[type="number"]{width:5.5rem}
+.grid{display:grid; gap:.6rem}
+.row{display:flex; gap:.5rem; align-items:center; flex-wrap:wrap}
+.card{background:linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03)); border:1px solid #26305a; border-radius:16px; padding:1rem; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.04)}
+.glow{box-shadow:0 0 0 1px var(--glass2), 0 0 40px -12px var(--neon1) inset, 0 0 40px -16px var(--neon2) inset}
+.badge{padding:.2rem .5rem; border-radius:999px; background:var(--glass); border:1px solid #2a335f; font-size:.8rem}
+.legend{font-size:.9rem; opacity:.85}
+.hidden{display:none !important}
+.center{display:flex; align-items:center; justify-content:center}
+.screen{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:2vmin}
+.panel{width:min(1100px,96vw); background:linear-gradient(180deg,rgba(4,12,32,.72),rgba(6,8,20,.72)); backdrop-filter: blur(10px); border:1px solid #23305a; border-radius:22px; padding:1.2rem}
+.header{display:flex; align-items:center; justify-content:space-between; gap:.8rem; border-bottom:1px dashed #2a325b; padding-bottom:.6rem; margin-bottom:.8rem}
+.header h1{font-size:1.4rem}
+#gamewrap{position:relative; width:100%; height:100%; display:flex; flex-direction:column}
+#hud{position:absolute; top:8px; left:50%; transform:translateX(-50%); display:flex; gap:.5rem; align-items:center; background:rgba(0,0,0,0.35); border:1px solid #2a335f; padding:.4rem .6rem; border-radius:12px}
+#hud .item{display:flex; align-items:center; gap:.35rem}
+#hud .value{font-weight:700}
+#hud .wind{min-width:160px}
+#hud .bar{height:6px; width:140px; background:#0c132e; border-radius:999px; overflow:hidden; border:1px solid #20305d}
+#hud .fill{height:100%; width:50%}
+.neon1{background:linear-gradient(90deg,var(--neon1),#00473f)}
+.neon2{background:linear-gradient(90deg,var(--neon2),#4a0037)}
+#canvas{width:100%; height:100%; flex:1; display:block; background:transparent}
+/* shop */
+.shop-grid{display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:.8rem}
+.shop-item{display:flex; gap:.6rem; align-items:center; justify-content:space-between; padding:.6rem .7rem; background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02)); border:1px solid #23305a; border-radius:14px}
+.shop-item h4{margin:0; font-size:1rem}
+.counter{display:flex; align-items:center; gap:.35rem}
+.counter button{width:32px; height:32px; border-radius:10px}
+.price{font-weight:700; color:var(--neon3)}
+.flex{display:flex; gap:.8rem; flex-wrap:wrap}
+/* overlay banners */
+.banner{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:1rem 1.2rem; border-radius:14px; border:1px solid #2d3b7a; background:rgba(10,16,40,0.75); text-align:center; pointer-events:none}
+/* minimap */
+#minimap{position:absolute; right:10px; bottom:10px; width:180px; height:90px; background:#06102b99; border:1px solid #20305d; border-radius:10px}
+kbd{background:#131a38; padding:.15rem .35rem; border:1px solid #2a335f; border-radius:6px; box-shadow:0 0 0 1px rgba(255,255,255,0.05) inset; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+.footer-tip{opacity:.85; font-size:.92rem}
+.small{font-size:.9rem}
+</style>
+</head>
+<body>
+<div id="menu" class="screen">
+  <div class="panel glow">
+    <div class="header">
+      <h1>CYBERSCORCH <span class="badge">Neon Artillery</span></h1>
+      <div class="legend">A slick, modern homage to <em>Scorched Earth</em></div>
+    </div>
+    <div class="grid" style="grid-template-columns:1.2fr .8fr">
+      <div class="card">
+        <h3>Game Mode</h3>
+        <div class="row">
+          <label><input type="radio" name="mode" value="skirmish" checked> Skirmish (classic)</label>
+          <label><input type="radio" name="mode" value="campaign"> Campaign (planet hop)</label>
+        </div>
+        <div id="skirmishOptions" class="grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="row"><label>Rounds</label><input type="number" id="rounds" min="1" max="20" value="3"></div>
+          <div class="row"><label>Humans</label><input type="number" id="humans" min="1" max="4" value="1"></div>
+          <div class="row"><label>AI</label><input type="number" id="ais" min="0" max="7" value="2"></div>
+        </div>
+        <div id="campaignNote" class="hidden legend">Campaign assumes <b>1 human</b> versus escalating AI across exotic battlefields.</div>
+        <div id="aiRows" class="grid" style="margin-top:.6rem"></div>
+        <div class="grid" style="grid-template-columns:repeat(2,1fr); margin-top:.6rem">
+          <div class="row"><label>Starting Credits</label><input type="number" id="startCredits" min="0" value="600"></div>
+          <div class="row"><label>Income / Round</label><input type="number" id="income" min="0" value="200"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Quick Help</h3>
+        <div class="legend small">
+          <p><b>During battle</b>: <kbd>←</kbd>/<kbd>→</kbd> aim, <kbd>↑</kbd>/<kbd>↓</kbd> power, <kbd>A</kbd>/<kbd>D</kbd> drive, <kbd>Q</kbd>/<kbd>E</kbd> weapon, <kbd>Space</kbd> fire.</p>
+          <p><b>Shop</b>: Spend credits on ammo & upgrades before each round.</p>
+          <p>Wind, gravity & terrain vary by battlefield. Destroy all rivals to win the round.</p>
+        </div>
+        <div class="footer-tip"><span class="badge">Theme</span> Neon cyberpunk UI with glass panels & scanlines. Enjoy ✨</div>
+      </div>
+    </div>
+    <div class="row" style="justify-content:flex-end; margin-top:.6rem">
+      <button id="startBtn" class="primary">Start</button>
+    </div>
+  </div>
+</div>
+
+<div id="shop" class="screen hidden">
+  <div class="panel glow" style="width:min(1200px,96vw)">
+    <div class="header"><h1>Armory & Upgrades</h1><div>Player: <span id="shopPlayerName" class="badge"></span> • Credits: <span id="shopCredits" class="badge"></span></div></div>
+    <div class="shop-grid" id="shopItems"></div>
+    <div class="row" style="justify-content:space-between; margin-top:.8rem">
+      <div class="legend small">Tip: Armor adds max HP; Shield reduces damage 25% (this round); Fuel adds movement; Repair heals now.</div>
+      <div class="row">
+        <button id="shopBack">Back</button>
+        <button id="shopReady" class="primary">Ready</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="preRound" class="screen hidden">
+  <div class="panel glow center" style="flex-direction:column; gap:.6rem">
+    <div id="bannerText" class="badge">Round starting...</div>
+    <button id="continueBtn" class="primary">Enter Battlefield</button>
+  </div>
+</div>
+
+<div id="postRound" class="screen hidden">
+  <div class="panel glow center" style="flex-direction:column; gap:.8rem">
+    <h2 id="roundResult">Round complete</h2>
+    <div id="campaignProgress" class="legend"></div>
+    <div class="row">
+      <button id="nextShop" class="primary">Armory</button>
+      <button id="quitBtn">Quit</button>
+    </div>
+  </div>
+</div>
+
+<div id="gamewrap" class="hidden">
+  <div id="hud">
+    <div class="item"><span class="badge">Player</span> <span id="hudPlayer" class="value"></span></div>
+    <div class="item"><span class="badge">Weapon</span> <span id="hudWeapon" class="value"></span></div>
+    <div class="item"><span class="badge">Ammo</span> <span id="hudAmmo" class="value"></span></div>
+    <div class="item"><span class="badge">Angle</span> <span id="hudAngle" class="value"></span></div>
+    <div class="item"><span class="badge">Power</span> <span id="hudPower" class="value"></span></div>
+    <div class="item wind"><span class="badge">Wind</span>
+      <div class="bar"><div id="windFill" class="fill neon1"></div></div>
+    </div>
+    <div class="item"><span class="badge">Round</span> <span id="hudRound" class="value"></span></div>
+  </div>
+  <canvas id="canvas" width="1200" height="650"></canvas>
+  <canvas id="minimap" width="180" height="90"></canvas>
+  <div id="statusBanner" class="banner hidden"></div>
+</div>
+
+<script>
+// ——— Utility ———
+const rand = (a=1,b=0)=>Math.random()*(b-a)+a;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function makeRand(seed){ // simple LCG
+  let s = seed>>>0 || 123456789;
+  return ()=> (s = (1664525*s + 1013904223)>>>0) / 4294967296;
+}
+function choice(arr,r=Math.random()){return arr[(r*arr.length)|0]}
+function fmt(n){return Math.round(n)}
+
+// ——— Game Data ———
+const WEAPONS = [
+  {id:"shell", name:"Shell", dmg:50, radius:22, cost:40},
+  {id:"heavy", name:"Heavy", dmg:70, radius:30, cost:75},
+  {id:"mirv",  name:"MIRV",  dmg:25, radius:18, cost:110, special:"mirv"},
+  {id:"nuke",  name:"Nuke",  dmg:120, radius:60, cost:220},
+];
+const UPGRADES = [
+  {id:"armor", name:"Armor Plating (+25 HP)", cost:120, apply:p=>{p.maxhp+=25; p.hp+=25}},
+  {id:"shield",name:"Shield (25% resist)", cost:140, apply:p=>{p.shield=1}},
+  {id:"fuel",  name:"Fuel (+50 move)", cost:80,   apply:p=>{p.fuel+=50}},
+  {id:"repair",name:"Repair (+50 hp now)", cost:90, apply:p=>{p.hp=Math.min(p.maxhp,p.hp+50)}},
+];
+const COLORS = ["#00ffd1","#ff38a7","#7afcff","#ffd166","#06d6a0","#ff006e","#118ab2","#ef476f"];
+
+const CAMPAIGN = [
+  {name:"Neon Dunes — Atlas Crater", g:230, wind:[-1.2,1.2], seed:7137, bonus:200},
+  {name:"Aurora Ridge — Borealis Rim", g:260, wind:[-1.6,1.6], seed:9911, bonus:250},
+  {name:"Typhoon Flats — Equatorial Belt", g:280, wind:[-2.0,2.0], seed:5229, bonus:300},
+  {name:"Ashfall Basin — Umbra Station", g:300, wind:[-2.4,2.4], seed:3141, bonus:360},
+];
+
+// ——— Global State ———
+const state = {
+  mode:"skirmish",
+  roundsTotal:3,
+  roundIdx:0,
+  players:[], // array of {name,isAI,diff,color,credits,inventory,stats}
+  aliveIdx:[], // indexes of alive tanks in play order
+  tanks:[], // active round tanks (references to players + per-round fields)
+  terrain:null, // {w,h,arr}
+  wind:0, gravity:260,
+  turn:0,
+  projectile:null,
+  phase:"menu", // menu, shop, play, banner, post
+  prng:Math.random,
+  mapSeed:0,
+  humanCount:1,
+  aiCount:2,
+  income:200,
+  skirmishRoundsRemaining:3,
+  campaignLevel:0,
+};
+
+// ——— DOM ———
+const $ = sel => document.querySelector(sel);
+const menu = $("#menu");
+const aiRows = $("#aiRows");
+const shop = $("#shop");
+const preRound = $("#preRound");
+const postRound = $("#postRound");
+const gamewrap = $("#gamewrap");
+const canvas = $("#canvas");
+const ctx = canvas.getContext("2d");
+const mini = $("#minimap").getContext("2d");
+const statusBanner = $("#statusBanner");
+
+// HUD els
+const hud = {
+  player: $("#hudPlayer"),
+  weapon: $("#hudWeapon"),
+  ammo: $("#hudAmmo"),
+  angle: $("#hudAngle"),
+  power: $("#hudPower"),
+  wind: $("#windFill"),
+  round: $("#hudRound"),
+};
+
+// ——— Menu logic ———
+function refreshAIInputs(){
+  aiRows.innerHTML="";
+  const n = +$("#ais").value|0;
+  for(let i=0;i<n;i++){
+    const row = document.createElement("div");
+    row.className="row card";
+    row.innerHTML=`<div class="badge">AI ${i+1}</div>
+      <label>Name <input value="AI-${i+1}" data-role="ainame"></label>
+      <label>Difficulty 
+        <select data-role="aidiff">
+          <option>Easy</option><option selected>Normal</option><option>Hard</option><option>Insane</option>
+        </select>
+      </label>`;
+    aiRows.appendChild(row);
+  }
+}
+$("#ais").addEventListener("input", refreshAIInputs);
+document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener("change", e=>{
+  const mode = e.target.value;
+  state.mode = mode;
+  $("#skirmishOptions").classList.toggle("hidden", mode==="campaign");
+  $("#campaignNote").classList.toggle("hidden", mode!=="campaign");
+}));
+refreshAIInputs();
+
+$("#startBtn").addEventListener("click", ()=>{
+  // build players
+  state.players=[];
+  const humans = +$("#humans").value|0;
+  const ais = +$("#ais").value|0;
+  state.humanCount = (state.mode==="campaign") ? 1 : humans;
+  state.aiCount = (state.mode==="campaign") ? Math.max(1,ais) : ais;
+  const startCredits = +$("#startCredits").value|0;
+  state.income = +$("#income").value|0;
+  state.roundsTotal = (state.mode==="campaign") ? CAMPAIGN.length : (+$("#rounds").value|0);
+  state.skirmishRoundsRemaining = state.roundsTotal;
+  // Humans
+  for(let i=0;i<state.humanCount;i++){
+    state.players.push(makePlayer(`Player ${i+1}`, false, "Human", startCredits, COLORS[i%COLORS.length]));
+  }
+  // AIs with per-AI difficulty
+  const rows = [...aiRows.querySelectorAll(".row")];
+  for(let i=0;i<state.aiCount;i++){
+    const name = (rows[i]?.querySelector('[data-role="ainame"]')?.value) || `AI-${i+1}`;
+    const diff = (rows[i]?.querySelector('[data-role="aidiff"]')?.value) || "Normal";
+    state.players.push(makePlayer(name, true, diff, startCredits, COLORS[(i+state.humanCount)%COLORS.length]));
+  }
+  menu.classList.add("hidden");
+  openShop();
+});
+
+function makePlayer(name,isAI,diff,credits,color){
+  return {
+    name,isAI,diff,color,
+    credits,
+    inventory:{"shell":5,"heavy":2,"mirv":1,"nuke":0},
+    maxhp:100, hp:100, shield:0, fuel:40,
+    stats:{wins:0,kills:0,damage:0},
+    aimMemory:{}, // per target adjustments
+  };
+}
+
+// ——— Shop ———
+let shopIdx=0;
+function openShop(){
+  state.phase="shop";
+  shop.classList.remove("hidden");
+  preRound.classList.add("hidden");
+  postRound.classList.add("hidden");
+  gamewrap.classList.add("hidden");
+  shopIdx=0;
+  renderShop();
+}
+$("#shopBack").addEventListener("click", ()=>{ // back to menu
+  shop.classList.add("hidden");
+  menu.classList.remove("hidden");
+});
+function renderShop(){
+  const p = state.players[shopIdx];
+  $("#shopPlayerName").textContent = p.name + (p.isAI?" (AI)":"");
+  $("#shopCredits").textContent = p.credits;
+  const wrap = $("#shopItems"); wrap.innerHTML="";
+  const items = [
+    ...WEAPONS.map(w=>({type:"weapon", ref:w, label:`${w.name} (x1)`, id:w.id, price:w.cost})),
+    ...UPGRADES.map(u=>({type:"upgrade",ref:u, label:u.name, id:u.id, price:u.cost})),
+  ];
+  for(const it of items){
+    const div = document.createElement("div");
+    div.className="shop-item";
+    div.innerHTML = `<div><h4>${it.label}</h4><div class="price">₡ ${it.price}</div></div>`;
+    const ctr = document.createElement("div"); ctr.className="counter";
+    if(it.type==="weapon"){
+      const have = document.createElement("span"); have.className="badge"; have.textContent=`Have: ${state.players[shopIdx].inventory[it.id]||0}`;
+      ctr.appendChild(have);
+    }
+    const minus = document.createElement("button"); minus.textContent="–";
+    const plus = document.createElement("button"); plus.textContent="+";
+    minus.addEventListener("click",()=>buy(it,-1));
+    plus.addEventListener("click",()=>buy(it,1));
+    ctr.append(minus,plus); div.appendChild(ctr); wrap.appendChild(div);
+  }
+}
+function buy(item, dir){
+  const p = state.players[shopIdx];
+  if(dir>0){
+    if(p.credits>=item.price){
+      p.credits -= item.price;
+      if(item.type==="weapon"){p.inventory[item.id]=(p.inventory[item.id]||0)+1}
+      else { item.ref.apply(p) }
+      renderShop();
+    }
+  }else if(dir<0){
+    // allow sell-back 70%
+    if(item.type==="weapon" && (p.inventory[item.id]||0)>0){
+      p.inventory[item.id]-=1;
+      p.credits += Math.floor(item.price*0.7);
+      renderShop();
+    }
+  }
+}
+$("#shopReady").addEventListener("click", ()=>{
+  // AI will auto-spend modestly
+  if(state.players[shopIdx].isAI){
+    autoSpend(state.players[shopIdx]);
+  }
+  shopIdx++;
+  if(shopIdx>=state.players.length){
+    // proceed to round
+    shop.classList.add("hidden");
+    setupRound();
+  }else renderShop();
+});
+function autoSpend(p){
+  const budget = p.credits;
+  // simple priorities by difficulty
+  const want = [];
+  if(p.diff==="Insane"||p.diff==="Hard"){want.push("shield","armor")}
+  if(p.diff!=="Easy"){want.push("heavy","mirv")}
+  want.push("shell","fuel");
+  let idx=0;
+  while(p.credits>30 && idx<200){
+    idx++;
+    const pick = want[(Math.random()*want.length)|0];
+    const w = WEAPONS.find(w=>w.id===pick);
+    const u = UPGRADES.find(u=>u.id===pick);
+    if(w && p.credits>=w.cost){p.credits-=w.cost; p.inventory[pick]=(p.inventory[pick]||0)+1}
+    else if(u && p.credits>=u.cost){p.credits-=u.cost; u.apply(p)}
+    else {break}
+  }
+}
+
+// ——— Round Setup ———
+function setupRound(){
+  state.phase="banner";
+  // choose battlefield
+  let levelConf;
+  if(state.mode==="campaign"){
+    levelConf = CAMPAIGN[state.campaignLevel];
+  }else{
+    levelConf = {name: `Sector ${1+state.roundIdx}`, g: clamp(200+rand(120),200,320), wind:[-1.6,1.6], seed: (Math.random()*999999)|0};
+  }
+  state.gravity = levelConf.g;
+  state.mapSeed = levelConf.seed;
+  state.prng = makeRand(state.mapSeed);
+  makeTerrain();
+  placeTanks();
+  state.wind = rand(levelConf.wind[0], levelConf.wind[1]);
+  state.turn = 0; state.projectile=null;
+  state.roundIdx = (state.roundIdx|0) + 1;
+  // banner then continue
+  $("#bannerText").textContent = `${levelConf.name} — g=${fmt(state.gravity)} wind=${state.wind.toFixed(2)}`;
+  preRound.classList.remove("hidden");
+}
+$("#continueBtn").addEventListener("click", ()=>{
+  preRound.classList.add("hidden");
+  gamewrap.classList.remove("hidden");
+  state.phase="play";
+  draw();
+  updateHUD();
+});
+
+function makeTerrain(){
+  const w = canvas.width, h = canvas.height;
+  const arr = new Float32Array(w);
+  const r = state.prng;
+  // layered noise via sin
+  let base = h*0.62;
+  for(let x=0;x<w;x++){
+    const nx = x/w;
+    const y = base 
+      + Math.sin(nx*6.28*1.6 + r()*6.28)*30
+      + Math.sin(nx*6.28*3.4 + r()*6.28)*24
+      + Math.sin(nx*6.28*6.6 + r()*6.28)*12
+      + (r()-0.5)*20;
+    arr[x]=clamp(y, h*0.35, h*0.9);
+  }
+  // small smoothing
+  for(let k=0;k<2;k++){
+    for(let x=1;x<w-1;x++) arr[x] = (arr[x-1]+arr[x]+arr[x+1])/3;
+  }
+  state.terrain = {w,h,arr};
+}
+function crater(cx,cy,r){
+  const t=state.terrain; if(!t) return;
+  const x0=Math.max(0,(cx-r)|0), x1=Math.min(t.w-1,(cx+r)|0);
+  for(let x=x0;x<=x1;x++){
+    const dx = x-cx; const d = Math.sqrt(dx*dx);
+    if(d<=r){
+      const drop = Math.sqrt(r*r-d*d);
+      t.arr[x] = Math.max(t.arr[x], cy + drop);
+    }
+  }
+}
+function placeTanks(){
+  state.tanks=[]; state.aliveIdx=[];
+  const spacing = canvas.width/(state.players.length+1);
+  for(let i=0;i<state.players.length;i++){
+    const px = Math.round((i+1)*spacing + rand(-30,30));
+    let py = state.terrain.arr[clamp(px,0,canvas.width-1)|0];
+    // adjust slightly to avoid super steep
+    let tries=0;
+    while(tries++<20 && Math.abs(state.terrain.arr[px+1]-state.terrain.arr[px-1])>18){
+      px = clamp(px + ((tries%2)?-5:5),30,canvas.width-30)|0;
+      py = state.terrain.arr[px|0];
+    }
+    const p = state.players[i];
+    const tank = {
+      i, ref:p,
+      x:px, y:py-6, vx:0, vy:0,
+      angle: (i%2?50:40),
+      power: 60,
+      weapon:"shell",
+      alive:true,
+      fuel:p.fuel,
+      shield:p.shield?0.75:1.0, // multiplier to damage (0.75 => 25% resist)
+    };
+    state.tanks.push(tank);
+    state.aliveIdx.push(i);
+  }
+}
+
+// ——— Rendering ———
+function draw(){
+  const t = state.terrain;
+  // sky
+  const g = ctx.createLinearGradient(0,0,0,canvas.height);
+  g.addColorStop(0,"#060b1f");
+  g.addColorStop(.5,"#0a1436");
+  g.addColorStop(1,"#1a1030");
+  ctx.fillStyle=g; ctx.fillRect(0,0,canvas.width,canvas.height);
+  // distant grid
+  ctx.save();
+  ctx.globalAlpha=0.08; ctx.strokeStyle="#00ffd133"; ctx.lineWidth=1;
+  const step=40;
+  for(let x=0;x<canvas.width;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke() }
+  for(let y=0;y<canvas.height;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke() }
+  ctx.restore();
+  // neon horizon
+  ctx.fillStyle="#00ffd144"; ctx.fillRect(0, canvas.height*0.72, canvas.width, 2);
+  // terrain
+  ctx.beginPath();
+  ctx.moveTo(0,canvas.height);
+  for(let x=0;x<canvas.width;x++) ctx.lineTo(x, t.arr[x]);
+  ctx.lineTo(canvas.width,canvas.height); ctx.closePath();
+  const tg = ctx.createLinearGradient(0,canvas.height*0.4,0,canvas.height);
+  tg.addColorStop(0,"#13243f"); tg.addColorStop(1,"#091024");
+  ctx.fillStyle=tg; ctx.fill();
+  // neon rim
+  ctx.strokeStyle="#7afcff80"; ctx.lineWidth=2; ctx.stroke();
+  // tanks
+  for(const tk of state.tanks){
+    if(!tk.alive) continue;
+    drawTank(tk);
+  }
+  // projectile
+  if(state.projectile){
+    const p = state.projectile;
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,6.28); ctx.fill();
+    // tracer
+    ctx.globalAlpha=0.25; ctx.strokeStyle="#ff38a7"; ctx.beginPath();
+    for(let i=1;i<p.trail.length;i++){ ctx.moveTo(p.trail[i-1].x,p.trail[i-1].y); ctx.lineTo(p.trail[i].x,p.trail[i].y) }
+    ctx.stroke(); ctx.globalAlpha=1;
+  }
+  drawMini();
+  if(state.phase==="play") requestAnimationFrame(step);
+}
+function drawTank(tk){
+  const w=18,h=8;
+  ctx.save();
+  ctx.translate(tk.x, tk.y-4);
+  // base
+  ctx.fillStyle= tk.ref.color; ctx.strokeStyle="#001c19";
+  ctx.beginPath(); ctx.roundRect(-w/2,-h,w,h,3); ctx.fill();
+  // turret
+  ctx.save();
+  ctx.rotate(-tk.angle*Math.PI/180);
+  ctx.fillStyle="#fff"; ctx.fillRect(0,-2,14,4);
+  ctx.restore();
+  // details
+  ctx.fillStyle="#0008"; ctx.fillRect(-w/2,-h, w, 2);
+  ctx.restore();
+  // HP bar
+  const pct = tk.ref.hp/tk.ref.maxhp;
+  ctx.fillStyle="#0c132e"; ctx.fillRect(tk.x-20, tk.y-16, 40, 6);
+  ctx.fillStyle=pct>0.5?"#00ffaa":pct>0.25?"#ffd166":"#ff3b6b";
+  ctx.fillRect(tk.x-20, tk.y-16, 40*pct, 6);
+}
+function drawMini(){
+  const w = canvas.width, h=canvas.height;
+  const mw = 180, mh=90;
+  mini.clearRect(0,0,mw,mh);
+  mini.fillStyle="#04122b"; mini.fillRect(0,0,mw,mh);
+  mini.strokeStyle="#183360"; mini.strokeRect(0,0,mw,mh);
+  mini.strokeStyle="#00ffd180";
+  mini.beginPath();
+  for(let x=0;x<mw;x++){
+    const sx = (x/mw)*w|0;
+    const sy = state.terrain.arr[sx]/h*mh;
+    if(x===0) mini.moveTo(0,sy); else mini.lineTo(x,sy);
+  }
+  mini.stroke();
+  for(const tk of state.tanks){
+    if(!tk.alive) continue;
+    mini.fillStyle=tk.ref.color; const x = tk.x/w*mw, y = tk.y/h*mh;
+    mini.fillRect(x-2,y-2,4,4);
+  }
+}
+
+// ——— HUD ———
+function updateHUD(){
+  const cur = currentTank();
+  if(!cur) return;
+  hud.player.textContent = cur.ref.name;
+  const wep = WEAPONS.find(w=>w.id===cur.weapon);
+  hud.weapon.textContent = wep?wep.name:cur.weapon;
+  hud.ammo.textContent = cur.ref.inventory[cur.weapon]||0;
+  hud.angle.textContent = fmt(cur.angle)+"°";
+  hud.power.textContent = fmt(cur.power);
+  hud.round.textContent = `${state.roundIdx}/${state.roundsTotal}`;
+  hud.wind.style.transform = `scaleX(${clamp((state.wind+2.5)/5,0,1)})`;
+}
+
+// ——— Turn & Controls ———
+function currentTank(){ return state.tanks[state.aliveIdx[state.turn%state.aliveIdx.length]] }
+function nextTurn(){
+  // check victory
+  const alive = state.tanks.filter(t=>t.alive);
+  const humansAlive = alive.filter(t=>!t.ref.isAI).length;
+  const aisAlive = alive.filter(t=>t.ref.isAI).length;
+  if(alive.length<=1 || humansAlive===0 || aisAlive===0){
+    endRound(humansAlive>0 && (aisAlive===0 || humansAlive>=aisAlive));
+    return;
+  }
+  state.turn = (state.turn+1)%state.aliveIdx.length;
+  if(!currentTank().alive){ nextTurn(); return }
+  // randomize wind slightly each turn
+  state.wind = clamp(state.wind + rand(-.3,.3), -2.5, 2.5);
+  updateHUD();
+  if(currentTank().ref.isAI){
+    setTimeout(aiAct, 600);
+  }
+}
+function endRound(humanWon){
+  state.phase="post";
+  gamewrap.classList.add("hidden");
+  postRound.classList.remove("hidden");
+  // income & bonuses
+  state.players.forEach(p=>p.credits += state.income);
+  $("#roundResult").textContent = humanWon? "Victory!": "Defeat";
+  if(state.mode==="campaign"){
+    const lvl = CAMPAIGN[state.campaignLevel];
+    if(humanWon){ state.players[0].credits += (lvl.bonus||200); state.campaignLevel++ }
+    $("#campaignProgress").textContent = state.campaignLevel>=CAMPAIGN.length ? 
+      "Campaign complete. You conquered the planet." :
+      `Next battlefield: ${CAMPAIGN[state.campaignLevel].name}`;
+  }else{
+    state.skirmishRoundsRemaining--;
+    $("#campaignProgress").textContent = state.skirmishRoundsRemaining>0 ? `${state.skirmishRoundsRemaining} rounds remaining` : "Skirmish complete.";
+  }
+}
+$("#nextShop").addEventListener("click", ()=>{
+  if(state.mode==="campaign"){
+    if(state.campaignLevel>=CAMPAIGN.length){ // done
+      location.reload(); return;
+    }
+  }else{
+    if(state.skirmishRoundsRemaining<=0){ location.reload(); return }
+  }
+  openShop();
+});
+$("#quitBtn").addEventListener("click", ()=>location.reload());
+
+// ——— Input ———
+const keys = {};
+addEventListener("keydown", e=>{
+  if(state.phase!=="play") return;
+  const tk = currentTank(); if(!tk || tk.ref.isAI) return;
+  if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," ","q","e","a","d"].includes(e.key.toLowerCase())) e.preventDefault();
+  keys[e.key.toLowerCase()]=true;
+  if(e.code==="Space"){ fire(tk) }
+  if(e.key==="q"){ cycleWeapon(tk,-1) }
+  if(e.key==="e"){ cycleWeapon(tk,1) }
+});
+addEventListener("keyup", e=>{ keys[e.key.toLowerCase()]=false });
+function handleInput(){
+  const tk = currentTank(); if(!tk || tk.ref.isAI || state.projectile) return;
+  if(keys["arrowleft"]){ tk.angle = clamp(tk.angle-0.7, 5,85) }
+  if(keys["arrowright"]){ tk.angle = clamp(tk.angle+0.7, 5,85) }
+  if(keys["arrowup"]){ tk.power = clamp(tk.power+0.8, 20,100) }
+  if(keys["arrowdown"]){ tk.power = clamp(tk.power-0.8, 20,100) }
+  if(keys["a"] && tk.fuel>0){ const nx = clamp(tk.x-1.2,10,canvas.width-10); tk.fuel-=0.5; tk.x=nx; tk.y=state.terrain.arr[nx|0]-6 }
+  if(keys["d"] && tk.fuel>0){ const nx = clamp(tk.x+1.2,10,canvas.width-10); tk.fuel-=0.5; tk.x=nx; tk.y=state.terrain.arr[nx|0]-6 }
+}
+function cycleWeapon(tk,dir){
+  const order = WEAPONS.map(w=>w.id);
+  let idx = order.indexOf(tk.weapon);
+  for(let k=0;k<order.length;k++){
+    idx = (idx+dir+order.length)%order.length;
+    const id = order[idx];
+    if((tk.ref.inventory[id]||0)>0){ tk.weapon=id; break }
+  }
+  updateHUD();
+}
+
+// ——— Fire & Physics ———
+function fire(tk){
+  if(state.projectile) return;
+  if((tk.ref.inventory[tk.weapon]||0)<=0){ flashBanner("Out of ammo!"); return }
+  tk.ref.inventory[tk.weapon]--;
+  const ang = -tk.angle*Math.PI/180;
+  const speed = tk.power*2.6;
+  const vx = Math.cos(ang)*speed;
+  const vy = Math.sin(ang)*speed;
+  state.projectile = {x:tk.x, y:tk.y-6, vx, vy, owner:tk, weapon:tk.weapon, trail:[{x:tk.x,y:tk.y-6}]};
+  updateHUD();
+}
+function step(){
+  handleInput();
+  if(state.projectile){
+    const p = state.projectile;
+    const dt = 1/60;
+    p.vx += state.wind*15*dt;
+    p.vy += state.gravity*dt;
+    p.x += p.vx*dt;
+    p.y += p.vy*dt;
+    if((p.trail.length%2)===0) p.trail.push({x:p.x,y:p.y});
+    // collide
+    if(p.x<0 || p.x>=canvas.width || p.y>canvas.height){
+      explode(p, p.x, clamp(p.y,0,canvas.height-1), 0); // off-screen
+      state.projectile=null; nextTurn(); return;
+    }
+    const ground = state.terrain.arr[p.x|0];
+    if(p.y>=ground){
+      explode(p, p.x, ground, 1);
+      state.projectile=null;
+      nextTurn();
+      return;
+    }
+  }
+  draw();
+  updateHUD();
+}
+function explode(p, x, y, terrainHit){
+  const wdef = WEAPONS.find(w=>w.id===p.weapon) || WEAPONS[0];
+  if(p.weapon==="mirv" && p.vy<0){ // split at apex if still rising
+    const parts = 5; const base = Math.atan2(p.vy,p.vx);
+    for(let i=0;i<parts;i++){
+      const ang = base + (i-2)*0.12;
+      const spd = Math.hypot(p.vx,p.vy)*0.85;
+      const child = {x:p.x,y:p.y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,owner:p.owner,weapon:"shell",trail:[]};
+      state.projectile = child; // recurse simulate each quickly
+      for(let k=0;k<240;k++){ // simulate until hit
+        step(); if(!state.projectile) break;
+      }
+    }
+    return;
+  }
+  crater(x,y,wdef.radius);
+  // damage tanks
+  for(const tk of state.tanks){
+    if(!tk.alive) continue;
+    const d = Math.hypot(tk.x-x, tk.y-y);
+    if(d<wdef.radius+6){
+      const frac = 1 - (d/(wdef.radius+6));
+      const dmg = Math.max(0, Math.round(wdef.dmg*frac*tk.shield));
+      tk.ref.hp -= dmg;
+      p.owner.ref.stats.damage += dmg;
+      if(tk.ref.hp<=0){ tk.alive=false; p.owner.ref.stats.kills++; state.aliveIdx = state.tanks.map((t,i)=>t.alive?i:null).filter(i=>i!==null) }
+    }
+  }
+}
+
+// ——— AI ———
+function aiAct(){
+  const tk = currentTank(); if(!tk || !tk.ref.isAI) return;
+  // Pick target: nearest enemy
+  const enemies = state.tanks.filter(t=>t.alive && t.i!==tk.i);
+  const target = enemies.sort((a,b)=>Math.abs(a.x-tk.x)-Math.abs(b.x-tk.x))[0];
+  if(!target){ nextTurn(); return }
+  // Choose weapon
+  const inv = tk.ref.inventory;
+  const pick = (tk.ref.diff==="Insane"||tk.ref.diff==="Hard") && (inv["heavy"]>0 || inv["nuke"]>0) ? (inv["nuke"]>0?"nuke":"heavy") :
+               inv["shell"]>0?"shell": (inv["heavy"]>0?"heavy":"mirv");
+  tk.weapon = pick;
+  // Aim estimation (no-wind solver baseline, then add difficulty error)
+  const dx = (target.x - tk.x);
+  const dy = (tk.y - target.y);
+  const g = state.gravity;
+  let angle = clamp(45 + (dy/Math.max(1,Math.abs(dx)))*20, 10, 80);
+  // compute power to roughly reach dx
+  const R = Math.max(40, Math.abs(dx));
+  let power = clamp(Math.sqrt(R * g)/8, 30, 95);
+  // difficulty noise
+  const noise = {Easy: 10, Normal:5, Hard:2, Insane:0.5}[tk.ref.diff] || 5;
+  angle += rand(-noise, noise);
+  power += rand(-noise, noise);
+  tk.angle=angle; tk.power=power;
+  // Occasionally reposition for better shot
+  if(Math.random()<0.35 && tk.fuel>10){
+    const dir = Math.sign(dx); const step = Math.min(tk.fuel, 20);
+    for(let s=0;s<step;s++){ tk.x = clamp(tk.x+dir*1.4,10,canvas.width-10); tk.y=state.terrain.arr[tk.x|0]-6; tk.fuel-=0.5 }
+  }
+  setTimeout(()=>fire(tk), 400);
+}
+
+// ——— UI helpers ———
+function flashBanner(txt){
+  statusBanner.textContent=txt;
+  statusBanner.classList.remove("hidden");
+  setTimeout(()=>statusBanner.classList.add("hidden"), 900);
+}
+
+// ——— Kick things off ———
+function resize(){
+  // keep aspect fit
+  const r = canvas.width/canvas.height;
+  const W = window.innerWidth, H = window.innerHeight;
+  let w=W, h=W/r;
+  if(h>H){ h=H; w=h*r }
+  canvas.style.width=w+"px"; canvas.style.height=h+"px";
+}
+addEventListener("resize", resize);
+resize();
+</script>
+</body>
+</html>

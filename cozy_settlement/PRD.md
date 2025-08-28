@@ -1,17 +1,17 @@
 ## Product Requirements Document — Cozy Chief
 
 ### 1) Vision
-Deliver a warm, self-contained medieval settlement toy where players guide a tiny hamlet into a thriving borough within a single HTML file. Emphasize clarity, cozy vibes, and quick sessions.
+Deliver a warm, self-contained fantasy medieval settlement crafting survival simulation where players guide a tiny hamlet into a thriving borough within a single HTML file. Emphasize clarity, cozy vibes, and quick sessions.
 
 ### 2) Goals & Non-Goals
 - Goals
   - Provide a frictionless city-builder loop with manual gathering → automation via buildings → tech-driven expansion.
   - Represent time, seasons, and happiness in a readable way.
-  - Support growth tiers with distinct milestones and a lightweight tech tree.
+  - Support growth tiers with distinct milestones and a complex tech tree.
   - Keep everything in one offline-playable HTML file with minimal assets.
   - Introduce light fantasy conflict with roaming creatures, dungeons, and defensive structures.
+  - Deep simulation (agent pathing, complex economy, dynamic terrain, buildings intereaction with terrain and nearby buildings can improve or degrade performance of buildings producing goods/resources).
 - Non-Goals
-  - Deep simulation (agent pathing, complex economy).
   - Multiplayer or persistent online saves.
 
 ### 3) Target Audience

@@ -1,4 +1,4 @@
-# Cozy Chief v2.8 Design Proposal
+# Cozy Chief v2.84 Design Proposal
 
 ## Goals
 - Reduce reliance on static action buttons by introducing an on-map player avatar.
