@@ -1460,7 +1460,7 @@ function gain(o){ Object.entries(o).forEach(([k,v])=>{
   S.res[k]=(S.res[k]||0)+add;
 }); updateResAndMeta(); updateBuildButtons(); }
 function cooldown(btn,ms){ btn.disabled=true; btn.dataset.cd='1'; const base=btn.innerHTML; let t=ms/1000; const id=setInterval(()=>{ t--; btn.innerHTML=base.split('<br>')[0]+`<br><span class="small">${t}s</span>`; if(t<=0){ clearInterval(id); btn.innerHTML=base; btn.dataset.cd='0'; updateActionButtons(); }},1000); }
-function collectNode(type,gainObj,cd,msg,e){
+function collectNode(type,gainObj,cd,msg,btn){
   const cell=S.tiles[S.avatar.y][S.avatar.x];
   if(!cell.res || cell.res.k!==type){ log('Nothing to gather here.'); return; }
   const key=Object.keys(gainObj)[0];
@@ -1472,16 +1472,16 @@ function collectNode(type,gainObj,cd,msg,e){
   redrawTiles();
   // Mark first-time gather for tutorial
   if(!S.didFirstGather){ S.didFirstGather=true; updateQuests(); }
-  cooldown(e.currentTarget,cd); log(msg); updateActionButtons();
+  cooldown(btn,cd); log(msg); updateActionButtons();
 }
-$('#gWood').onclick=e=>collectNode('tree',{wood:5},3000,'Chopped wood.',e);
-$('#gFood').onclick=e=>collectNode('berry',{food:5},3000,'Picked wild berries.',e);
-$('#gStone').onclick=e=>collectNode('stone',{stone:3},5000,'Scavenged stone.',e);
-$('#gClay').onclick=e=>collectNode('clay',{clay:3},5000,'Dug clay.',e);
-$('#gFlax').onclick=e=>collectNode('flax',{flax:2},6000,'Collected flax.',e);
-$('#gMana').onclick=e=>collectNode('crystal',{mana:1},6000,'Harvested crystals.',e);
-$('#scout').onclick=e=>{ if((S.longhouseLvl||0)<2){ toast('Need War Room'); return; } scout(); cooldown(e.currentTarget,15000); };
-$('#hero').onclick=e=>{ if((S.longhouseLvl||0)<3){ toast('Need Great Hall'); return; } if((S.res.gold||0)<50|| (S.res.food||0)<20){ toast('Need 50 gold and 20 food'); return;} S.res.gold-=50; S.res.food-=20; S.heroBuffTimer=10; log('A hero visits your Great Hall (+25% production for 10 min).'); cooldown(e.currentTarget,20000); updateResAndMeta(); };
+const btnWood=$('#gWood'); btnWood.addEventListener('click',()=>collectNode('tree',{wood:5},3000,'Chopped wood.',btnWood));
+const btnFood=$('#gFood'); btnFood.addEventListener('click',()=>collectNode('berry',{food:5},3000,'Picked wild berries.',btnFood));
+const btnStone=$('#gStone'); btnStone.addEventListener('click',()=>collectNode('stone',{stone:3},5000,'Scavenged stone.',btnStone));
+const btnClay=$('#gClay'); btnClay.addEventListener('click',()=>collectNode('clay',{clay:3},5000,'Dug clay.',btnClay));
+const btnFlax=$('#gFlax'); btnFlax.addEventListener('click',()=>collectNode('flax',{flax:2},6000,'Collected flax.',btnFlax));
+const btnMana=$('#gMana'); btnMana.addEventListener('click',()=>collectNode('crystal',{mana:1},6000,'Harvested crystals.',btnMana));
+const btnScout=$('#scout'); btnScout.addEventListener('click',()=>{ if((S.longhouseLvl||0)<2){ toast('Need War Room'); return; } scout(); cooldown(btnScout,15000); });
+const btnHero=$('#hero'); btnHero.addEventListener('click',()=>{ if((S.longhouseLvl||0)<3){ toast('Need Great Hall'); return; } if((S.res.gold||0)<50|| (S.res.food||0)<20){ toast('Need 50 gold and 20 food'); return;} S.res.gold-=50; S.res.food-=20; S.heroBuffTimer=10; log('A hero visits your Great Hall (+25% production for 10 min).'); cooldown(btnHero,20000); updateResAndMeta(); });
 
 function scout(){
   let placed=0, tries=0;
@@ -1494,17 +1494,18 @@ function scout(){
   }
   if(placed>0){ redrawTiles(); log('Scouts mark crystal outcrops on your map.'); }
 }
-$('#recruit').onclick=e=>{
+const btnRecruit=$('#recruit');
+btnRecruit.addEventListener('click',()=>{
   const cell=S.tiles[S.avatar.y][S.avatar.x];
   if(cell.b==='chief' && S.res.food>=30 && (S.res.housing||0)>S.res.pop){
     S.res.food-=30; S.res.pop+=1; lastPop=Math.floor(S.res.pop);
     log("New villager arrived (population: "+lastPop+").");
-    cooldown(e.currentTarget,10000);
+    cooldown(btnRecruit,10000);
     updateResAndMeta(); updateBuildButtons(); updateActionButtons();
   } else {
     log("Need to be at your Longhouse with food and housing.");
   }
-};
+});
 $('#reset').onclick=()=>{ if(confirm("Reset?")) location.reload(); };
 $('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
 
