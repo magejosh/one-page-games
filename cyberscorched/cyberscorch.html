@@ -429,9 +429,13 @@ function setupRound(){
 $("#continueBtn").addEventListener("click", ()=>{
   preRound.classList.add("hidden");
   gamewrap.classList.remove("hidden");
+  // Begin active play and kick off the main loop
+  // Previously the round transitioned to the play phase and drew a single
+  // frame, but the animation/update loop never started which left the game
+  // unresponsive.  Starting with `step()` initializes the loop so input and
+  // projectile physics run as expected.
   state.phase="play";
-  draw();
-  updateHUD();
+  step();
 });
 
 function makeTerrain(){
