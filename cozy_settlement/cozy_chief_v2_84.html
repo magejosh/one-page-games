@@ -16,7 +16,11 @@ body{font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Arial; color:var(--ink
 header,footer{padding:10px 12px; background:linear-gradient(180deg,var(--panel),var(--panel2)); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
 .wrap{display:grid; grid-template-rows:auto 1fr auto; height:100%}
 .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
-#resRow{display:grid; grid-auto-flow:column; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px 12px;}
+#resRow{display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px 12px;}
+@media (max-width:900px){
+  #resRow{grid-template-columns:repeat(auto-fit,minmax(80px,1fr));}
+  #resRow .small{display:none;}
+}
 .pill{background:#0c1125; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-weight:800}
 .small{font-size:12px; color:#c8d2ff}
 .grid{display:grid; grid-template-columns: 320px 1fr 260px; gap:10px; padding:10px}
