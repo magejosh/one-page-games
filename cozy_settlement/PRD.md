@@ -9,9 +9,9 @@ Deliver a warm, self-contained medieval settlement toy where players guide a tin
   - Represent time, seasons, and happiness in a readable way.
   - Support growth tiers with distinct milestones and a lightweight tech tree.
   - Keep everything in one offline-playable HTML file with minimal assets.
+  - Introduce light fantasy conflict with roaming creatures, dungeons, and defensive structures.
 - Non-Goals
   - Deep simulation (agent pathing, complex economy).
-  - Combat or external threats.
   - Multiplayer or persistent online saves.
 
 ### 3) Target Audience
@@ -37,12 +37,13 @@ Deliver a warm, self-contained medieval settlement toy where players guide a tin
   - Expanded economy (clay→bricks, flax→linen, tools, culture, faith).
 
 ### 6) Systems Detail
-- **Resources**: wood, stone, food, gold, clay, flax, linen, iron, tools, housing, population, faith, knowledge, culture.
-- **Buildings**: produce or convert resources, grant housing or mood, or unlock events (e.g., Chief’s Longhouse, Quarry, Shrine, School).
+- **Resources**: wood, stone, food, gold, clay, flax, linen, iron, tools, mana, hides, housing, population, faith, knowledge, culture.
+- **Buildings**: produce or convert resources, grant housing or mood, train units, or unlock events (e.g., Chief’s Longhouse, Lumber Mill upgrades, Guard Towers, Adventurers Guild, Quarry, Shrine, School).
+- **Terrain & Fauna**: colored terrain types influence building placement; animals and monsters roam and may drop loot or attack.
 - **Time & Seasons**: 24‑minute days; four-season cycle modifies farm yields.
 - **Happiness & Population**: happiness drifts based on food/housing; higher happiness boosts growth; tiers require population + resource milestones.
-- **Tech Tree**: nodes such as Masonry, Crafting, Trade Guilds provide unlocks and modifiers; requires knowledge earned over time.
-- **Events**: periodic checks for knowledge from Longhouses and rare quarry finds.
+- **Tech Tree**: multi-column tree with 20+ tiers including Forestry upgrades, Arcana, Warfare, and Civic branches; nodes provide unlocks and modifiers and require knowledge earned over time.
+- **Events**: Longhouse lore, quarry surprises, wandering monsters, and dungeons that adventurers can clear for rewards.
 
 ### 7) UX & Controls
 - Point-and-click UI with gather buttons and building cards.

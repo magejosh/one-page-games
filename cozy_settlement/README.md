@@ -3,6 +3,7 @@
 A tiny medieval settlement builder in a single HTML file. Gather resources, place buildings on a draggable grid, research techs, and grow your hamlet through the ages.
 
 ### Play the builds
+- `cozy_chief_v2_84.html` — Deeper tech tree, lumber mill upgrades, terrain types, and early roaming creatures.
 - `cozy_chief_v2_83.html` — Revamped tech tree layout, faster woodcutters, and streamlined UI.
 - `cozy_chief_v2_82.html` — Node-based gathering, market building, and branching tech tree.
 - `cozy_chief_v2_81.html` — Fixes zoom highlight misalignment, shows tile resource info, centers the avatar, and swaps incompatible emojis.
@@ -24,6 +25,7 @@ A tiny medieval settlement builder in a single HTML file. Gather resources, plac
 - **Knowledge & tech tree**: Earn 📜 knowledge from Schools or the Chief’s Longhouse and spend it on technologies that unlock new buildings or bonuses (Masonry, Trade Guilds, Stone Roads, etc.).
 - **Random events**: Quarries may uncover iron or gold; the Chief’s Longhouse may share extra lore.
 - **Camera & minimap**: Drag to pan, scroll to zoom, and use the minimap to jump around the settlement.
+- **Terrain & critters**: colored tiles influence building bonuses; animals and monsters may roam the map.
 
 ### Controls
 - Click resource buttons to forage.
