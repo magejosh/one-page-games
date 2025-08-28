@@ -5,6 +5,8 @@ title: One Page Games 🎮
 
 # One Page Games 🎮
 
+<div id="toolbox"></div>
+
 A growing collection of tiny, single-file games. Click a version to play.
 
 {% assign files = site.static_files | where: "extname", ".html" | sort: "path" %}
