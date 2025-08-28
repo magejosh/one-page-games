@@ -315,7 +315,19 @@ function openShop(){
   postRound.classList.add("hidden");
   gamewrap.classList.add("hidden");
   shopIdx=0;
-  renderShop();
+  advanceShop();
+}
+function advanceShop(){
+  while(shopIdx < state.players.length && state.players[shopIdx].isAI){
+    autoSpend(state.players[shopIdx]);
+    shopIdx++;
+  }
+  if(shopIdx>=state.players.length){
+    shop.classList.add("hidden");
+    setupRound();
+  }else{
+    renderShop();
+  }
 }
 $("#shopBack").addEventListener("click", ()=>{ // back to menu
   shop.classList.add("hidden");
@@ -365,16 +377,8 @@ function buy(item, dir){
   }
 }
 $("#shopReady").addEventListener("click", ()=>{
-  // AI will auto-spend modestly
-  if(state.players[shopIdx].isAI){
-    autoSpend(state.players[shopIdx]);
-  }
   shopIdx++;
-  if(shopIdx>=state.players.length){
-    // proceed to round
-    shop.classList.add("hidden");
-    setupRound();
-  }else renderShop();
+  advanceShop();
 });
 function autoSpend(p){
   const budget = p.credits;
@@ -429,20 +433,25 @@ function makeTerrain(){
   const w = canvas.width, h = canvas.height;
   const arr = new Float32Array(w);
   const r = state.prng;
-  // layered noise via sin
-  let base = h*0.62;
+  const base = h*0.6;
+  const step1=120, step2=60, step3=30;
+  const pts1=[], pts2=[], pts3=[];
+  for(let i=0;i<=Math.ceil(w/step1)+1;i++) pts1[i]=base + r()*40-20;
+  for(let i=0;i<=Math.ceil(w/step2)+1;i++) pts2[i]=r()*30-15;
+  for(let i=0;i<=Math.ceil(w/step3)+1;i++) pts3[i]=r()*20-10;
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const smooth=t=>t*t*(3-2*t);
   for(let x=0;x<w;x++){
-    const nx = x/w;
-    const y = base 
-      + Math.sin(nx*6.28*1.6 + r()*6.28)*30
-      + Math.sin(nx*6.28*3.4 + r()*6.28)*24
-      + Math.sin(nx*6.28*6.6 + r()*6.28)*12
-      + (r()-0.5)*20;
+    const i1=(x/step1)|0, t1=smooth((x%step1)/step1);
+    const i2=(x/step2)|0, t2=smooth((x%step2)/step2);
+    const i3=(x/step3)|0, t3=smooth((x%step3)/step3);
+    let y = lerp(pts1[i1],pts1[i1+1],t1)
+          + lerp(pts2[i2],pts2[i2+1],t2)
+          + lerp(pts3[i3],pts3[i3+1],t3);
     arr[x]=clamp(y, h*0.35, h*0.9);
   }
-  // small smoothing
-  for(let k=0;k<2;k++){
-    for(let x=1;x<w-1;x++) arr[x] = (arr[x-1]+arr[x]+arr[x+1])/3;
+  for(let k=0;k<3;k++){
+    for(let x=1;x<w-1;x++) arr[x]=(arr[x-1]+arr[x]+arr[x+1])/3;
   }
   state.terrain = {w,h,arr};
 }
@@ -642,11 +651,12 @@ const keys = {};
 addEventListener("keydown", e=>{
   if(state.phase!=="play") return;
   const tk = currentTank(); if(!tk || tk.ref.isAI) return;
-  if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," ","q","e","a","d"].includes(e.key.toLowerCase())) e.preventDefault();
-  keys[e.key.toLowerCase()]=true;
+  const key = e.key.toLowerCase();
+  if(["arrowleft","arrowright","arrowup","arrowdown"," ","q","e","a","d"].includes(key)) e.preventDefault();
+  keys[key]=true;
   if(e.code==="Space"){ fire(tk) }
-  if(e.key==="q"){ cycleWeapon(tk,-1) }
-  if(e.key==="e"){ cycleWeapon(tk,1) }
+  if(key==="q"){ cycleWeapon(tk,-1) }
+  if(key==="e"){ cycleWeapon(tk,1) }
 });
 addEventListener("keyup", e=>{ keys[e.key.toLowerCase()]=false });
 function handleInput(){
