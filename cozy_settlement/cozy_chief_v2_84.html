@@ -74,6 +74,10 @@ h2{margin:4px 0 8px; font-size:18px}
 .node button{margin-top:6px}
 .techFoot{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #2a335a}
 </style>
+<style>
+/* Delivery courier */
+.courier{position:absolute; width:40px; height:40px; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:6; transition: transform 2s linear;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -302,6 +306,13 @@ const S={
   avatar:{x:24,y:15,spd:1},
   mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false, manaProd:1, hideBonus:1, knowledgeBonus:1, cultureBonus:1, speedBonus:1},
   timers:{chief:0, quarry:0},
+  delivery:0,
+  terrain:{woodOnForest:0, woodTotal:0, quarryOnHill:0, quarryTotal:0},
+  quests:[
+    {id:'q_move_gather', text:'Move to a resource and gather once', done:false},
+    {id:'q_build_chief', text:'Build the Chief\'s Longhouse', done:false}
+  ],
+  didFirstGather:false,
   growing:false,
 };
 let lastPop=Math.floor(S.res.pop||0);
@@ -485,9 +496,20 @@ function placeAt(k,x,y){
   for(const [rk,rv] of Object.entries(cost)){ if((S.res[rk]||0) < rv){ toast("Not enough "+rk); return; } }
   for(const [rk,rv] of Object.entries(cost)){ S.res[rk]-=rv; }
   cell.res=null; cell.b=k; S.b[k]++; if(b.house){ let add=b.house; if(S.mods.cottageBonus && k==='cottage') add += S.mods.cottageBonus; S.res.housing += add; }
+  // Track terrain placement bonuses
+  if(k==='woodhut' || k==='lumbermill'){
+    S.terrain.woodTotal++;
+    if(cell.terrain==='forest') S.terrain.woodOnForest++;
+  }
+  if(k==='quarry'){
+    S.terrain.quarryTotal++;
+    if(cell.terrain==='hill') S.terrain.quarryOnHill++;
+  }
   buildBuildList(); redrawTiles(); updateBuildButtons(); updateResAndMeta(); updateActionButtons();
   exitPlacement("Placed "+b.name+".");
   log("Built "+b.name+" @ "+x+","+y);
+  // Quests: building the Longhouse
+  if(k==='chief') updateQuests();
 }
 
 function upgradeWoodhut(x,y){
@@ -582,10 +604,69 @@ function updateActionButtons(){
   const can = atChief && S.res.food>=30 && (S.res.housing||0)>S.res.pop;
   rbtn.disabled = rbtn.dataset.cd==='1' || !can;
 }
+
+// --- Tutorial quests (simple intro tasks)
+function renderQuests(){
+  const qel=$('#quests'); if(!qel) return;
+  qel.innerHTML='';
+  S.quests.forEach(q=>{
+    const row=document.createElement('div'); row.className='small';
+    const mark = q.done ? '✅' : '⬜';
+    row.textContent = mark+ ' ' + q.text;
+    qel.appendChild(row);
+  });
+}
+function updateQuests(){
+  let changed=false;
+  S.quests.forEach(q=>{
+    if(q.done) return;
+    if(q.id==='q_move_gather' && S.didFirstGather){ q.done=true; changed=true; S.res.wood+=10; log('Quest complete: Gather once (+10 wood).'); }
+    if(q.id==='q_build_chief' && (S.b.chief||0)>0){ q.done=true; changed=true; S.res.knowledge+=1; log("Quest complete: Longhouse built (+1 📜)."); }
+  });
+  if(changed){ updateResAndMeta(); renderQuests(); }
+}
 function prodMult(b){
   let m = S.mods.allMult;
-  if(b.k==='woodhut' || b.k==='lumbermill') m*=S.mods.woodhutMult;
+  if(b.k==='woodhut' || b.k==='lumbermill'){
+    m*=S.mods.woodhutMult;
+    if(S.terrain.woodTotal>0){ m *= (1 + 0.1 * (S.terrain.woodOnForest / S.terrain.woodTotal)); }
+  }
+  if(b.k==='quarry'){
+    if(S.terrain.quarryTotal>0){ m *= (1 + 0.1 * (S.terrain.quarryOnHill / S.terrain.quarryTotal)); }
+  }
   return m;
+}
+
+// --- Simple delivery visuals: send a courier to the Longhouse
+function findChiefPos(){
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      if(S.tiles[y][x].b==='chief') return {x,y};
+    }
+  }
+  return null;
+}
+function spawnCourier(sx,sy,tx,ty,emoji='🧺'){
+  const el=document.createElement('div'); el.className='courier'; el.textContent=emoji;
+  el.style.transform = `translate(${sx*CELL}px, ${sy*CELL}px)`;
+  mapEl.appendChild(el);
+  requestAnimationFrame(()=>{
+    el.style.transform = `translate(${tx*CELL}px, ${ty*CELL}px)`;
+  });
+  setTimeout(()=>{ el.remove(); }, 2200);
+}
+function spawnDeliveries(){
+  const chief=findChiefPos(); if(!chief) return;
+  // collect producer positions (sample a few to avoid overdraw)
+  const picks=[];
+  for(let y=0;y<WORLD_H;y++){
+    for(let x=0;x<WORLD_W;x++){
+      const k=S.tiles[y][x].b; if(!k) continue;
+      const b=BUILD.find(z=>z.k===k); if(!b||!b.prod) continue;
+      if(Math.random()<0.04) picks.push({x,y});
+    }
+  }
+  picks.slice(0,3).forEach(p=>spawnCourier(p.x,p.y,chief.x,chief.y));
 }
 function produce(dtMinutes){
   const dt = dtMinutes/60;
@@ -664,6 +745,9 @@ while (lastPop < now) {
     }
     S.timers.quarry -= 30;
   }
+  // Delivery visuals every ~5 in-game minutes
+  S.delivery += dtMinutes;
+  if(S.delivery >= 5){ S.delivery -= 5; spawnDeliveries(); }
 }
 
 // Tech Tree UI
@@ -795,6 +879,8 @@ function collectNode(type,gainObj,cd,msg,e){
   cell.res.left -= amt;
   if(cell.res.left<=0){ cell.res=null; }
   redrawTiles();
+  // Mark first-time gather for tutorial
+  if(!S.didFirstGather){ S.didFirstGather=true; updateQuests(); }
   cooldown(e.currentTarget,cd); log(msg); updateActionButtons();
 }
 $('#gWood').onclick=e=>collectNode('tree',{wood:5},3000,'Chopped wood.',e);
@@ -818,7 +904,7 @@ $('#speed').onchange=e=>{ S.speed=parseFloat(e.target.value||'1'); };
 
 // bootstrap
 buildResourceRow(); buildBuildList(); ensureMap(); redrawTiles(); centerOnAvatar();
-updateResAndMeta(); updateBuildButtons(); updateActionButtons();
+updateResAndMeta(); updateBuildButtons(); updateActionButtons(); renderQuests();
 log("World seed: "+seedStr);
 log("Use arrow keys or WASD to explore and gather.");
 log("Your people gather around you, awaiting guidance.");
