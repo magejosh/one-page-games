@@ -407,30 +407,47 @@ function noise2d(x,y){
   s=(s^(s>>13))*1274126177;
   return ((s^(s>>16))>>>0)/4294967296;
 }
+let oceanWidths=[];
+const OCEAN_MAX_DEPTH=3+(rng()*3|0);
+
 function randTerrain(x,y){
-  // ocean along the western edge
-  const ocean=Math.floor(WORLD_W*0.1);
-  if(x<ocean) return 'water';
-  // island style falloff so land stays mostly connected
-  const nx=(x-ocean)/(WORLD_W-ocean)-0.5, ny=y/WORLD_H-0.5;
-  const dist=Math.sqrt(nx*nx+ny*ny);
-  const h=noise2d(x,y)-dist*0.4; // lower near outer edges
-  if(h<0.15) return 'water'; // lakes and rivers
   const r=noise2d(x+1000,y+1000);
   if(r<0.75) return 'plains';
   if(r<0.9) return 'forest';
   return 'hill';
 }
-function smoothWater(iter=1){
-  const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  for(let t=0;t<iter;t++){
-    const copy=S.tiles.map(row=>row.map(c=>c.terrain));
+
+function addOcean(){
+  for(let y=0;y<WORLD_H;y++){
+    const w=1+(rng()*OCEAN_MAX_DEPTH|0);
+    oceanWidths[y]=w;
+    for(let x=0;x<w;x++) S.tiles[y][x].terrain='water';
+  }
+}
+
+function addLake(){
+  const r=2; let cx,cy;
+  do{
+    cx=OCEAN_MAX_DEPTH+r+(rng()*(WORLD_W-OCEAN_MAX_DEPTH-2*r)|0);
+    cy=r+(rng()*(WORLD_H-2*r)|0);
+  }while(S.tiles[cy][cx].terrain==='water');
+  for(let y=-r;y<=r;y++){
+    for(let x=-r;x<=r;x++){
+      if(x*x+y*y<=r*r){ S.tiles[cy+y][cx+x].terrain='water'; }
+    }
+  }
+}
+
+function addRivers(){
+  const count=1+(rng()<0.5?0:1);
+  for(let i=0;i<count;i++){
+    let x=OCEAN_MAX_DEPTH+3+(rng()*(WORLD_W-OCEAN_MAX_DEPTH-3)|0);
     for(let y=0;y<WORLD_H;y++){
-      for(let x=0;x<WORLD_W;x++){
-        let wn=0; dirs.forEach(([dx,dy])=>{ const nx=x+dx, ny=y+dy; if(nx>=0&&ny>=0&&nx<WORLD_W&&ny<WORLD_H){ if(copy[ny][nx]==='water') wn++; }});
-        if(copy[y][x]==='water' && wn<=3) S.tiles[y][x].terrain='plains';
-        else if(copy[y][x]!=='water' && wn>=7) S.tiles[y][x].terrain='water';
-      }
+      S.tiles[y][x].terrain='water';
+      if(x<oceanWidths[y]) break;
+      const r=rng();
+      if(r<0.6) x--; else if(r<0.8) x++;
+      x=clamp(x,0,WORLD_W-1);
     }
   }
 }
@@ -448,16 +465,6 @@ function smoothBiomes(iter=1){
         if(majority && majority[1]>=5 && majority[0]!==cur){ S.tiles[y][x].terrain=majority[0]; }
       }
     }
-  }
-}
-
-// carve a simple north-to-south river
-function addRiver(){
-  const ocean=Math.floor(WORLD_W*0.1);
-  let x=ocean + (rng()*(WORLD_W-ocean)|0);
-  for(let y=0;y<WORLD_H;y++){
-    S.tiles[y][x].terrain='water';
-    if(rng()<0.4){ x+=rng()<0.5?-1:1; x=clamp(x,ocean,WORLD_W-1); }
   }
 }
 
@@ -487,7 +494,7 @@ const S={
 let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null,terrain:randTerrain(x,y)}); } S.tiles.push(row); }
-smoothWater(1); smoothBiomes(1); addRiver();
+addOcean(); addLake(); addRivers(); smoothBiomes(1);
 let critters=[];
 function randAmt(k){
   const n=NODES.find(n=>n.k===k);
