@@ -73,6 +73,12 @@ h2{margin:4px 0 8px; font-size:18px}
 .node.locked{opacity:.6}
 .node button{margin-top:6px}
 .techFoot{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #2a335a}
+/* Event modal */
+#eventModal{position:fixed; inset:0; background:rgba(7,10,22,.8); display:none; align-items:center; justify-content:center; z-index:35}
+.eventCard{width:700px; background:#0e1430; border:1px solid #2a335a; border-radius:14px; box-shadow:0 20px 80px rgba(0,0,0,.5); display:grid; grid-template-rows:auto 1fr auto}
+.eventHead{display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #2a335a}
+.eventBody{padding:12px; overflow:auto}
+.eventFoot{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-top:1px solid #2a335a}
 </style>
 <style>
 /* Delivery courier */
@@ -125,7 +131,11 @@ h2{margin:4px 0 8px; font-size:18px}
       <div class="viewport" id="viewport">
         <div id="map"></div>
       </div>
+      <button id="gMana" class="btn">🔮 Harvest Crystals<br><span class="small">+1 mana · 6s</span></button>
+      <button id="scout" class="btn">🧭 Scout<br><span class="small">Reveal rare nodes · 15s</span></button>
+      <button id="hero" class="btn">🛡️ Host Hero<br><span class="small">-50 gold, -20 food · 20s</span></button>
     </div>
+    <div id="tileInfo" class="small" style="margin-top:6px"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px">
       <section class="bcard">
         <div class="small"><b>Milestones</b> — goals that grant rewards</div>
@@ -182,6 +192,25 @@ h2{margin:4px 0 8px; font-size:18px}
       <div>Tip: You can also roll a <b>Surprise Discovery</b> from the right panel.</div>
     </div>
   </div>
+</div>
+
+<!-- Event Modal -->
+<div id="eventModal">
+  <div class="eventCard">
+    <div class="eventHead">
+      <div id="eventTitle"><b>Council Event</b></div>
+      <button id="eventClose" class="btn">Decide later</button>
+    </div>
+    <div class="eventBody">
+      <div id="eventText" class="small" style="margin-bottom:8px"></div>
+      <div id="eventChoices"></div>
+    </div>
+    <div class="eventFoot small">
+      <div>Choices may have uncertain outcomes.</div>
+      <div id="eventHint"></div>
+    </div>
+  </div>
+  
 </div>
 
 <script>
@@ -252,6 +281,12 @@ const TECH = [
   {id:"beasts", name:"Beast Taming", cost:60, desc:"Track and domesticate wildlife.", prereq:["exploration"], unlocks:[], effect:"hide_bonus"},
   {id:"guard_tower", name:"Guard Towers", cost:80, desc:"Watch posts against monsters.", prereq:["beasts"], unlocks:["tower"]},
   {id:"dungeoneering", name:"Dungeoneering", cost:100, desc:"Brave souls delve below.", prereq:["guard_tower"], unlocks:["guild"]},
+  // New branches
+  {id:"engineering", name:"Engineering", cost:90, desc:"Mills, bridges, devices.", prereq:["masonry"], unlocks:[], effect:"prod_small"},
+  {id:"bridges", name:"Bridges", cost:100, desc:"Span rivers and moats.", prereq:["engineering"], unlocks:[], effect:"speed_small"},
+  {id:"waterworks", name:"Waterworks", cost:110, desc:"Mills and canals.", prereq:["engineering"], unlocks:[], effect:"farm_bonus"},
+  {id:"seafaring", name:"Seafaring", cost:110, desc:"Coastal trade routes.", prereq:["trade"], unlocks:[], effect:"gold_bonus"},
+  {id:"civics", name:"Civics", cost:120, desc:"Institutions and law.", prereq:["council"], unlocks:[], effect:"house_culture"},
   {id:"arcana", name:"Arcana", cost:120, desc:"Tap into mana flows.", prereq:["dungeoneering"], unlocks:[], effect:"mana_gain"},
   {id:"wizardry", name:"Wizardry", cost:140, desc:"Schools for the gifted.", prereq:["arcana"], unlocks:[], effect:"mana_prod"},
   {id:"enchanting", name:"Enchanting", cost:160, desc:"Imbue tools with power.", prereq:["wizardry"], unlocks:[], effect:"tool_bonus2"},
@@ -269,6 +304,11 @@ const TECH = [
   {id:"chronomancy", name:"Chronomancy", cost:400, desc:"Time is malleable.", prereq:["cosmic_insight"], unlocks:[], effect:"speed_bonus"},
   {id:"utopia", name:"Utopia", cost:420, desc:"Perfect society.", prereq:["chronomancy"], unlocks:[], effect:"victory"},
   {id:"ascension", name:"Ascension", cost:440, desc:"Transcendence.", prereq:["utopia"], unlocks:[], effect:"win"},
+  // Government choices (mutually exclusive)
+  {id:"gov_monarchy", name:"Monarchy", cost:140, desc:"Crown unifies authority.", prereq:["architecture","civics"], unlocks:[], effect:"gov_monarchy"},
+  {id:"gov_republic", name:"Council Republic", cost:140, desc:"Councils guide policy.", prereq:["civics","trade"], unlocks:[], effect:"gov_republic"},
+  {id:"gov_theocracy", name:"Theocracy", cost:140, desc:"Faith directs rule.", prereq:["civics","spirituality"], unlocks:[], effect:"gov_theocracy"},
+  {id:"gov_league", name:"Merchant League", cost:140, desc:"Guilds hold sway.", prereq:["trade","architecture"], unlocks:[], effect:"gov_league"},
 ];
 
 let TECH_POS_MAP = {};
@@ -304,7 +344,7 @@ const S={
   speed:1, cam:{x:200,y:200,z:1.0,drag:false,lastX:0,lastY:0},
   tiles:[], place:null, techs: new Set(["Founding Lore"]),
   avatar:{x:24,y:15,spd:1},
-  mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false, manaProd:1, hideBonus:1, knowledgeBonus:1, cultureBonus:1, speedBonus:1},
+  mods:{allMult:1, woodhutMult:1, bakeryGold:1, bakeryFoodUse:1, innCulture:1, cottageBonus:0, mineDiscount:0, stoneForage:1, toolBonus:false, toolNerf:1, manaProd:1, hideBonus:1, knowledgeBonus:1, cultureBonus:1, speedBonus:1},
   timers:{chief:0, quarry:0},
   delivery:0,
   terrain:{woodOnForest:0, woodTotal:0, quarryOnHill:0, quarryTotal:0},
@@ -312,6 +352,11 @@ const S={
     {id:'q_move_gather', text:'Move to a resource and gather once', done:false},
     {id:'q_build_chief', text:'Build the Chief\'s Longhouse', done:false}
   ],
+  longhouseLvl:0, // 0=Longhouse,1=Council Hall,2=War Room,3=Great Hall
+  eventTimer:0,
+  eventOpen:false,
+  heroBuffTimer:0,
+  gov:null,
   didFirstGather:false,
   growing:false,
 };
@@ -319,10 +364,18 @@ let lastPop=Math.floor(S.res.pop||0);
 BUILD.forEach(b=>S.b[b.k]=0);
 for(let y=0;y<WORLD_H;y++){ const row=[]; for(let x=0;x<WORLD_W;x++){ row.push({b:null,res:null,terrain:randTerrain()}); } S.tiles.push(row); }
 let critters=[];
-function randAmt(k){ const n=NODES.find(n=>n.k===k); return Math.floor(n.amt[0]+rng()*(n.amt[1]-n.amt[0])); }
+function randAmt(k){
+  const n=NODES.find(n=>n.k===k);
+  if(!n){
+    if(k==='dungeon') return 1;
+    if(k==='crystal') return 8 + (rng()*6|0);
+    return 10;
+  }
+  return Math.floor(n.amt[0]+rng()*(n.amt[1]-n.amt[0]));
+}
 function scatterNodes(){
   const place=(k,c)=>{ for(let i=0;i<c;i++){ let x,y; do{ x=rng()*WORLD_W|0; y=rng()*WORLD_H|0; }while(S.tiles[y][x].res || (x===S.avatar.x && y===S.avatar.y)); S.tiles[y][x].res={k,left:randAmt(k)}; } };
-  place('tree',60); place('berry',40); place('stone',30); place('clay',25); place('flax',20);
+  place('tree',60); place('berry',40); place('stone',30); place('clay',25); place('flax',20); place('dungeon',3);
 }
 scatterNodes();
 
@@ -344,6 +397,44 @@ function updateCritters(dt){
       c.el.style.left=(c.x*CELL)+'px'; c.el.style.top=(c.y*CELL)+'px';
     }
   });
+}
+
+// Override: smarter critters with defenses
+function spawnCritter(){
+  const towerCnt = S.b.tower||0, guildCnt=S.b.guild||0;
+  const base = 0.2; const reduce = 0.15*towerCnt + 0.2*guildCnt; const chance = Math.max(0.02, base*(1-reduce));
+  const c={x:rng()*WORLD_W|0,y:rng()*WORLD_H|0,type:rng()<chance?'monster':'animal'};
+  const el=document.createElement('div'); el.className='critter';
+  el.textContent = c.type==='monster'?'👾':'🐇';
+  el.style.left=(c.x*CELL)+'px'; el.style.top=(c.y*CELL)+'px';
+  c.el=el; mapEl.appendChild(el); critters.push(c);
+}
+function nearbyDefense(x,y){
+  const r=4;
+  for(let yy=Math.max(0,y-r); yy<=Math.min(WORLD_H-1,y+r); yy++){
+    for(let xx=Math.max(0,x-r); xx<=Math.min(WORLD_W-1,x+r); xx++){
+      const b=S.tiles[yy][xx].b; if(b==='tower' || b==='guild') return true;
+    }
+  }
+  return false;
+}
+const _updateCrittersRaw = updateCritters;
+updateCritters = function(dt){
+  // call original movement/spawn
+  _updateCrittersRaw(dt);
+  // defense check clears nearby monsters
+  const removed=[];
+  critters.forEach((c,i)=>{
+    if(c.type==='monster' && nearbyDefense(c.x,c.y)){
+      const chance = Math.min(0.9, 0.3*dt + 0.05*(S.b.tower||0) + 0.08*(S.b.guild||0) + 0.05*(S.longhouseLvl>=2?1:0));
+      if(Math.random()<chance){
+        log('Guards drive off a monster.');
+        c.el.remove(); removed.push(i);
+      }
+    }
+  });
+  // remove in reverse order
+  removed.sort((a,b)=>b-a).forEach(i=>critters.splice(i,1));
 }
 
 // ===== UI builders
@@ -421,7 +512,11 @@ function redrawTiles(){
       if(S.growing && b.house) extra = '<span class="grow" title="Growing">👶</span>';
       el.innerHTML=`<div>${b.ic}</div>${extra}<span class="l">${b.name.split(' ')[0]}</span>`;
     }
-    else if(cell.res){ const n=NODES.find(n=>n.k===cell.res.k); el.innerHTML=`<div>${n.em}</div><span class="l">${cell.res.left}</span>`; }
+    else if(cell.res){
+      const n=NODES.find(n=>n.k===cell.res.k);
+      const em = n ? n.em : (cell.res.k==='dungeon'?'🏰':'?');
+      el.innerHTML=`<div>${em}</div><span class="l">${cell.res.left}</span>`;
+    }
     else el.innerHTML='<span class="l"></span>';
   });
 }
@@ -449,6 +544,8 @@ mapEl.addEventListener('click',e=>{
     const idx=critters.findIndex(c=>c.el===crit);
     if(idx>-1){
       const c=critters[idx];
+      const dist=Math.abs(S.avatar.x-c.x)+Math.abs(S.avatar.y-c.y);
+      if(dist>1){ log('Move closer to engage.'); return; }
       if(c.type==='monster'){ S.res.gold+=20; log('Monster defeated (+20 gold).'); }
       else { S.res.hide+=1; log('Hunted animal (+1 hide).'); }
       crit.remove(); critters.splice(idx,1); updateResAndMeta();
@@ -461,15 +558,31 @@ mapEl.addEventListener('click',e=>{
   const cell=S.tiles[y][x];
   if(cell.res){
     const n=NODES.find(n=>n.k===cell.res.k);
-    $('#planner').innerHTML = `${n.em} <b>${n.k}</b><br><span class="small">Remain: ${cell.res.left}</span>`;
+    const terrText = S.tiles[y][x].terrain;
+    let html = `${(n?n.em:'🏰')} <b>${cell.res.k}</b><br><span class=\"small\">Remain: ${cell.res.left}</span><br><span class=\"small\">Terrain: ${terrText}</span>`;
+    if(cell.res.k==='dungeon'){
+      const near = (S.avatar.x===x && S.avatar.y===y);
+      const can = (S.b.guild||0)>0;
+      html += `<br><span class=\"small\">Requires: Adventurers Guild</span>`;
+      html += `<br><button class=\"btn small\" id=\"delve_${x}_${y}\" ${(!can||!near)?'disabled':''}>Delve Dungeon</button>`;
+      setTimeout(()=>{ const btn=$('#delve_'+x+'_'+y); if(btn) btn.onclick=()=>delveDungeon(x,y); });
+    }
+    $('#planner').innerHTML = html;
   } else if(cell.b){
     const b=BUILD.find(q=>q.k===cell.b);
     let html=`${b.ic} <b>${b.name}</b>`;
+    const terrText = S.tiles[y][x].terrain;
+    html+=`<br><span class="small">Terrain: ${terrText}</span>`;
     if(cell.b==='woodhut' && S.techs.has('Forestry')){
       html+=`<br><button class="btn small" id="upg_${x}_${y}">Upgrade ➜ Lumber Mill</button>`;
       setTimeout(()=>{
         const btn=$('#upg_'+x+'_'+y); if(btn) btn.onclick=()=>upgradeWoodhut(x,y);
       });
+    }
+    if(cell.b==='chief'){
+      const lvl=S.longhouseLvl; const names=['Longhouse','Council Hall','War Room','Great Hall'];
+      html+=`<br><span class="small">Hall Level: ${names[lvl]}</span>`;
+      if(lvl<3){ const next=names[lvl+1]; html+=`<br><button class="btn small" id="upg_hall">Upgrade ➜ ${next}</button>`; setTimeout(()=>{ const btn=$('#upg_hall'); if(btn) btn.onclick=upgradeLonghouse; }); }
     }
     $('#planner').innerHTML=html;
   } else {
@@ -486,6 +599,17 @@ vp.addEventListener('mousedown',e=>{ if(e.button!==0) return; S.cam.drag=true; S
 window.addEventListener('mouseup',()=>{ S.cam.drag=false; vp.classList.remove('dragging'); });
 window.addEventListener('mousemove',e=>{ if(S.cam.drag){ const dx=e.clientX-S.cam.lastX, dy=e.clientY-S.cam.lastY; S.cam.x -= dx/S.cam.z; S.cam.y -= dy/S.cam.z; S.cam.lastX=e.clientX; S.cam.lastY=e.clientY; applyCam(); }});
 vp.addEventListener('wheel',e=>{ e.preventDefault(); const dir=Math.sign(e.deltaY); S.cam.z=clamp(S.cam.z*(dir>0?0.9:1.1),0.6,2.5); applyCam(); },{passive:false});
+
+// hover tile info
+vp.addEventListener('mousemove',e=>{
+  if(S.cam.drag) return;
+  const {wx,wy}=screenToWorld(e.clientX,e.clientY); const pos=worldToTile(wx,wy); if(!pos) return;
+  const cell=S.tiles[pos.ty][pos.tx];
+  const base = `Tile: ${cell.terrain} @ ${pos.tx},${pos.ty}`;
+  const resTxt = cell.res? ` • Resource: ${cell.res.k} (${cell.res.left})` : '';
+  const bTxt = cell.b? ` • Building: ${BUILD.find(b=>b.k===cell.b).name}` : '';
+  $('#tileInfo').textContent = base + resTxt + bTxt;
+});
 
 function placeAt(k,x,y){
   const cell=S.tiles[y][x]; if(cell.b){ toast("Tile occupied"); return; }
@@ -594,7 +718,7 @@ function updateBuildButtons(){
 function updateActionButtons(){
   const cell=S.tiles[S.avatar.y][S.avatar.x];
   const res=cell.res?cell.res.k:null;
-  const map={tree:'#gWood',berry:'#gFood',stone:'#gStone',clay:'#gClay',flax:'#gFlax'};
+  const map={tree:'#gWood',berry:'#gFood',stone:'#gStone',clay:'#gClay',flax:'#gFlax',crystal:'#gMana'};
   for(const [k,sel] of Object.entries(map)){
     const b=$(sel); const cd=b.dataset.cd==='1';
     b.disabled = cd || res!==k;
@@ -603,6 +727,42 @@ function updateActionButtons(){
   const atChief=cell.b==='chief';
   const can = atChief && S.res.food>=30 && (S.res.housing||0)>S.res.pop;
   rbtn.disabled = rbtn.dataset.cd==='1' || !can;
+  const sb=$('#scout'); if(sb){ sb.disabled = sb.dataset.cd==='1' || (S.longhouseLvl||0)<2; }
+  const hb=$('#hero'); if(hb){ hb.disabled = hb.dataset.cd==='1' || (S.longhouseLvl||0)<3 || (S.heroBuffTimer||0)>0 || (S.res.gold||0)<50 || (S.res.food||0)<20; }
+}
+
+function upgradeLonghouse(){
+  const lvl=S.longhouseLvl;
+  const costs=[
+    null,
+    {wood:60,stone:50,gold:30}, // ➜ Council Hall
+    {wood:80,stone:80,gold:60,tools:20}, // ➜ War Room
+    {wood:120,stone:120,gold:120,linen:30}, // ➜ Great Hall
+  ];
+  if(lvl>=3) return;
+  const next=costs[lvl+1];
+  for(const [k,v] of Object.entries(next)){ if((S.res[k]||0)<v){ toast('Not enough '+k); return; } }
+  for(const [k,v] of Object.entries(next)){ S.res[k]-=v; }
+  S.longhouseLvl++;
+  // small immediate benefit per upgrade
+  if(S.longhouseLvl===1){ log('The Council Hall convenes. Knowledge will flow more often.'); }
+  if(S.longhouseLvl===2){ log('War Room established. Scouts and guards respond faster to threats.'); }
+  if(S.longhouseLvl===3){ log('Great Hall rises. Heroes and visitors bring culture and tales.'); }
+  updateResAndMeta(); updateBuildButtons();
+  // refresh planner UI
+  const cell=S.tiles[S.avatar.y][S.avatar.x]; if(cell){ $('#planner').innerHTML+=''; }
+}
+
+function delveDungeon(x,y){
+  if(!(S.b.guild||0)){ toast('Need an Adventurers Guild'); return; }
+  if(!(S.avatar.x===x && S.avatar.y===y)){ toast('Move onto the dungeon to delve'); return; }
+  const cell=S.tiles[y][x]; if(!cell.res || cell.res.k!=='dungeon'){ toast('No dungeon here'); return; }
+  // simple outcome roll
+  const r=Math.random();
+  if(r<0.6){ S.res.gold += 30; log('Your adventurers return with spoils (+30 gold).'); }
+  else if(r<0.85){ S.res.iron += 4; log('Ore veins discovered (+4 iron).'); }
+  else { S.res.pop = Math.max(0, S.res.pop-1); log('A tragic loss in the depths (-1 pop).'); }
+  cell.res=null; redrawTiles(); updateResAndMeta(); updateBuildButtons();
 }
 
 // --- Tutorial quests (simple intro tasks)
@@ -634,6 +794,7 @@ function prodMult(b){
   if(b.k==='quarry'){
     if(S.terrain.quarryTotal>0){ m *= (1 + 0.1 * (S.terrain.quarryOnHill / S.terrain.quarryTotal)); }
   }
+  if((S.heroBuffTimer||0)>0) m*=1.25;
   return m;
 }
 
@@ -675,7 +836,7 @@ function produce(dtMinutes){
     // consumption
     if(b.use){
       if(b.use.food){ let need=b.use.food*n*dt; if(b.k==='bakery') need*= (S.mods.bakeryFoodUse||1); const used=Math.min(need,S.res.food); S.res.food-=used; const r=need?used/need:1; if(b.prod && b.prod.gold) S.res.gold += b.prod.gold*n*r*dt*(S.mods.bakeryGold||1); }
-      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools){ let v=b.prod.tools*n*r*dt; if(S.mods.toolBonus) v*=1.2; S.res.tools += v; } }
+      if(b.use.iron){ const need=b.use.iron*n*dt; const used=Math.min(need,S.res.iron); S.res.iron-=used; const r=need?used/need:1; if(b.prod && b.prod.tools){ let v=b.prod.tools*n*r*dt; if(S.mods.toolBonus) v*=1.2; v*= (S.mods.toolNerf||1); S.res.tools += v; } }
       if(b.use.wood){ const need=b.use.wood*n*dt; const used=Math.min(need,S.res.wood); S.res.wood-=used; }
       if(b.use.flax){ const need=b.use.flax*n*dt; const used=Math.min(need,S.res.flax); S.res.flax-=used; const r=need?used/need:1; if(b.prod && b.prod.linen) S.res.linen += b.prod.linen*n*r*dt; }
     }
@@ -693,7 +854,7 @@ function produce(dtMinutes){
   });
 
   // Market passive
-  const mkt=S.b.market||0; if(mkt>0) S.res.gold += (0.02*mkt)*(S.res.pop*0.2 + S.res.culture*0.05)*dt;
+  const mkt=S.b.market||0; if(mkt>0) S.res.gold += (0.02*mkt)*(S.res.pop*0.2 + S.res.culture*0.05)*dt * (S.gov==='League'?1.15:1);
 
   // Pop growth & food
   const spare=(S.res.housing||0)-(S.res.pop||0);
@@ -728,10 +889,23 @@ while (lastPop < now) {
 
   // --- NEW: Knowledge chance from Chief’s Longhouse (every 10 minutes)
   S.timers.chief += dtMinutes;
-  const chiefCount = S.b.chief||0;
+  const chiefCount = 0; // overridden by scaled knowledge system below
   while(S.timers.chief >= 10 && chiefCount>0){
     const p = Math.min(0.6, 0.15*chiefCount + 0.01*(S.res.pop||0)); // 10-min cycle chance
     if(Math.random() < p){ S.res.knowledge += 1; log("The elders share lore at the Chief’s Longhouse (+1 📜)."); }
+    S.timers.chief -= 10;
+  }
+  // Council events every ~20 minutes if upgraded
+  if((S.longhouseLvl||0) >= 1 && !S.eventOpen){ S.eventTimer += dtMinutes; if(S.eventTimer>=20){ S.eventTimer=0; openRandomEvent(); } }
+  
+  // Scaled knowledge (every 10 minutes)
+  while(S.timers.chief >= 10 && (S.b.chief||0)>0){
+    const lvl=(S.longhouseLvl||0);
+    const perPop = 0.01 + 0.005*lvl; // per 10 min per pop
+    let gainAmt = Math.max(1, Math.floor((S.res.pop||0) * perPop));
+    if(S.gov==='Republic') gainAmt = Math.ceil(gainAmt*1.1);
+    S.res.knowledge += gainAmt;
+    log(`Council shares lore (+${gainAmt} 📜; hall lvl ${lvl}).`);
     S.timers.chief -= 10;
   }
 
@@ -748,6 +922,7 @@ while (lastPop < now) {
   // Delivery visuals every ~5 in-game minutes
   S.delivery += dtMinutes;
   if(S.delivery >= 5){ S.delivery -= 5; spawnDeliveries(); }
+  if((S.heroBuffTimer||0)>0){ S.heroBuffTimer = Math.max(0, S.heroBuffTimer - dtMinutes); }
 }
 
 // Tech Tree UI
@@ -756,10 +931,83 @@ $('#btnTechTree').onclick=()=>{ openTechTree(); };
 $('#techClose').onclick=()=>{ closeTechTree(); };
 function openTechTree(){ $('#techModal').style.display='flex'; renderTechTree(); updateResAndMeta(); }
 function closeTechTree(){ $('#techModal').style.display='none'; $('#techCanvas').innerHTML=''; $('#techEdges').innerHTML=''; }
+
+// ===== Council Events
+function openRandomEvent(){
+  const ev = genEvent();
+  S.eventOpen=true;
+  $('#eventTitle').innerHTML = `<b>${ev.title}</b>`;
+  $('#eventText').textContent = ev.text;
+  const box=$('#eventChoices'); box.innerHTML='';
+  ev.choices.forEach((ch,i)=>{
+    const btn=document.createElement('button'); btn.className='btn'; btn.style='display:block; margin:6px 0';
+    const costTxt = Object.keys(ch.cost||{}).length? ' — Cost: '+Object.entries(ch.cost).map(([k,v])=>`${v} ${k}`).join(', ') : '';
+    const rewTxt = Object.keys(ch.reward||{}).length? ' — Gain: '+Object.entries(ch.reward).map(([k,v])=>`${v} ${k}`).join(', ') : '';
+    const tail = ch.mystery? ' — Uncertain' : '';
+    btn.textContent = ch.label + costTxt + rewTxt + tail;
+    btn.onclick=()=>applyEventChoice(ch);
+    box.appendChild(btn);
+  });
+  $('#eventModal').style.display='flex';
+}
+function closeEvent(){ $('#eventModal').style.display='none'; S.eventOpen=false; }
+$('#eventClose').onclick=()=>{ closeEvent(); };
+
+function haveResources(cost){ return Object.entries(cost||{}).every(([k,v])=>(S.res[k]||0)>=v); }
+function applyCost(cost){ Object.entries(cost||{}).forEach(([k,v])=>{ S.res[k]-=v; }); }
+function applyReward(rew){ Object.entries(rew||{}).forEach(([k,v])=>{ S.res[k]=(S.res[k]||0)+v; }); }
+
+function applyEventChoice(ch){
+  if(!haveResources(ch.cost||{})){ toast('Not enough resources'); return; }
+  applyCost(ch.cost||{});
+  // hidden penalty with small chance on mystery
+  if(ch.hidden){ applyCost(ch.hidden); log('Unexpected complications increased the cost.'); }
+  applyReward(ch.reward||{});
+  if(ch.log) log(ch.log);
+  updateResAndMeta(); closeEvent();
+}
+
+function genEvent(){
+  const pool=[genBardEvent, genCouncilDisputeEvent, genTraderEvent, genShrineOmenEvent];
+  const f=pool[Math.floor(Math.random()*pool.length)];
+  return f();
+}
+function genBardEvent(){
+  const lvl=S.longhouseLvl||0;
+  const base={title:'A Wandering Bard', text:'A bard seeks patronage at your hall.', choices:[]};
+  base.choices.push({label:'Host a performance', cost:{food:10}, reward:{culture:8+2*lvl}, log:'Songs fill the night. Culture rises.'});
+  base.choices.push({label:'Commission an epic', cost:{gold:20}, reward:{culture:20+5*lvl}, mystery:true, hidden: Math.random()<0.5? {gold:10}: null, log:'The epic stirs hearts across the hamlet.'});
+  base.choices.push({label:'Decline politely', cost:{}, reward:{}, log:'The bard moves on.'});
+  return base;
+}
+function genCouncilDisputeEvent(){
+  const lvl=S.longhouseLvl||0;
+  const base={title:'Village Dispute', text:'Two families seek council over grazing rights.', choices:[]};
+  base.choices.push({label:'Compensate both sides', cost:{gold:15}, reward:{happy:2}, log:'Fairness improves morale.'});
+  base.choices.push({label:'Side with the herders', cost:{}, reward:{food:10}, mystery:true, hidden: {culture: -3}, log:'Food stocks improve, but some feel slighted.'});
+  base.choices.push({label:'Delay and study law', cost:{knowledge:Math.max(1,lvl)}, reward:{knowledge:2+lvl}, log:'You learn from precedent.'});
+  return base;
+}
+function genTraderEvent(){
+  const base={title:'Traveling Trader', text:'A trader offers odd wares and tools.', choices:[]};
+  base.choices.push({label:'Buy tools', cost:{gold:25}, reward:{tools:10}, log:'Your workshops hum.'});
+  base.choices.push({label:'Trade linens', cost:{linen:10}, reward:{gold:20}, log:'A tidy profit.'});
+  base.choices.push({label:'Mystery crate', cost:{gold:15}, reward: Math.random()<0.5? {mana:1}:{iron:3}, mystery:true, hidden: Math.random()<0.3? {gold:5}: null, log:'You take a chance on the unknown.'});
+  return base;
+}
+function genShrineOmenEvent(){
+  const base={title:'Strange Omen', text:'Travelers report lights over the old stones.', choices:[]};
+  base.choices.push({label:'Send a prayer', cost:{faith:2}, reward:{happy:2}, log:'Hearts are eased.'});
+  base.choices.push({label:'Investigate', cost:{tools:5}, reward:{knowledge:3}, mystery:true, hidden: Math.random()<0.3? {tools:3}: null, log:'Findings spark debate among elders.'});
+  base.choices.push({label:'Ignore it', cost:{}, reward:{}, log:'Life goes on.'});
+  return base;
+}
 function nodeStatus(id){
   const node = TECH_DATA.find(t=>t.id===id);
   const owned = S.techs.has(node.name);
   if(owned) return 'owned';
+  // lock other government types if one already chosen
+  if(id.startsWith('gov_') && S.gov && !owned) return 'locked';
   const ok = node.prereq.every(pid=> S.techs.has(TECH_DATA.find(t=>t.id===pid).name));
   return ok ? 'available' : 'locked';
 }
@@ -796,6 +1044,15 @@ function applyTechEffects(name){
     case 'Chronomancy': S.mods.speedBonus*=1.20; log("Chronomancy bends time (+20% speed)."); break;
     case 'Utopia': S.mods.allMult*=1.20; log("Utopia increases all production (+20% all)."); break;
     case 'Ascension': log("Ascension achieved. You win!"); break;
+    case 'Engineering': S.mods.allMult*=1.05; log("Engineering improves works (+5% all)."); break;
+    case 'Bridges': S.avatar.spd*=1.2; log("Bridges ease travel (+20% avatar speed)."); break;
+    case 'Waterworks': S.mods.allMult*=1.05; log("Waterworks help farms and mills (+5% all)."); break;
+    case 'Seafaring': S.mods.bakeryGold=1.25; log("Seafaring expands trade (+25% market/bakery gold)."); break;
+    case 'Civics': S.res.housing += (S.b.cottage||0); S.mods.cultureBonus*=1.05; log("Civics strengthen society (+housing, +culture)."); break;
+    case 'Monarchy': if(S.gov){ log('A government already rules.'); break;} S.gov='Monarchy'; S.mods.allMult*=1.05; S.happy+=3; log("Government: Monarchy (+5% all, +3 happiness; slower discoveries)."); break;
+    case 'Council Republic': if(S.gov){ log('A government already rules.'); break;} S.gov='Republic'; S.mods.knowledgeBonus*=1.15; S.mods.allMult*=1.02; log("Government: Council Republic (+15% knowledge, +2% all; -gold)."); break;
+    case 'Theocracy': if(S.gov){ log('A government already rules.'); break;} S.gov='Theocracy'; S.mods.faithBonus= (S.mods.faithBonus||1)*1.3; S.mods.toolNerf=0.9; S.happy+=5; log("Government: Theocracy (+30% faith, +5 happiness; -10% tools)."); break;
+    case 'Merchant League': if(S.gov){ log('A government already rules.'); break;} S.gov='League'; S.mods.bakeryGold*=1.35; S.mods.allMult*=1.02; S.happy-=3; log("Government: Merchant League (+35% gold, +2% all; -3 happiness)."); break;
   }
 }
 function unlockTech(id){
@@ -888,6 +1145,20 @@ $('#gFood').onclick=e=>collectNode('berry',{food:5},3000,'Picked wild berries.',
 $('#gStone').onclick=e=>collectNode('stone',{stone:3},5000,'Scavenged stone.',e);
 $('#gClay').onclick=e=>collectNode('clay',{clay:3},5000,'Dug clay.',e);
 $('#gFlax').onclick=e=>collectNode('flax',{flax:2},6000,'Collected flax.',e);
+$('#gMana').onclick=e=>collectNode('crystal',{mana:1},6000,'Harvested crystals.',e);
+$('#scout').onclick=e=>{ if((S.longhouseLvl||0)<2){ toast('Need War Room'); return; } scout(); cooldown(e.currentTarget,15000); };
+$('#hero').onclick=e=>{ if((S.longhouseLvl||0)<3){ toast('Need Great Hall'); return; } if((S.res.gold||0)<50|| (S.res.food||0)<20){ toast('Need 50 gold and 20 food'); return;} S.res.gold-=50; S.res.food-=20; S.heroBuffTimer=10; log('A hero visits your Great Hall (+25% production for 10 min).'); cooldown(e.currentTarget,20000); updateResAndMeta(); };
+
+function scout(){
+  let placed=0, tries=0;
+  while(placed<3 && tries<200){
+    tries++;
+    const x=rng()*WORLD_W|0, y=rng()*WORLD_H|0; const cell=S.tiles[y][x];
+    if(cell.b || cell.res || cell.terrain==='water') continue;
+    cell.res={k:'crystal', left:randAmt('crystal')}; placed++;
+  }
+  if(placed>0){ redrawTiles(); log('Scouts mark crystal outcrops on your map.'); }
+}
 $('#recruit').onclick=e=>{
   const cell=S.tiles[S.avatar.y][S.avatar.x];
   if(cell.b==='chief' && S.res.food>=30 && (S.res.housing||0)>S.res.pop){
