@@ -414,7 +414,7 @@ const OCEAN_MAX_DEPTH=3+(rng()*3|0);
 
 function randTerrain(x,y){
   const r=noise2d(x+1000,y+1000);
-  if(r<0.45) return 'plains';
+  if(r<0.42) return 'plains';
   if(r<0.81) return 'forest';
   return 'hill';
 }
