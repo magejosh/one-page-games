@@ -74,3 +74,9 @@ Build on v2.83 by deepening progression and adding light fantasy conflict.
 - Should terrain bonuses be multiplicative or unlock exclusive structures?
 - How many upgrade tiers should defensive structures support?
 
+### Farming & Hunting Expansion (v2.84+)
+- Techs: Farming (Farm, Wheat Field), Hunting (Hunters Lodge), Tanning (Tanner), Butchery (Butcher), Blacksmithing (Blacksmith).
+- Resources: Adds Meat (🍖). Hunters and Ranches generate meat; Butchers convert meat ➜ food.
+- Adjacency: Farms get +15% per adjacent Wheat Field; Wheat Fields get +10% per adjacent Farm.
+- Automation: Each Hunters Lodge trains a hunter that periodically hunts animals, returning meat/hides. If a Tanner exists, hunted yields get +25% and goods are delivered to Longhouse.
+- Ranch: Steady meat and hides.

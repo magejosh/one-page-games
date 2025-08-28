@@ -71,3 +71,11 @@ Deliver a warm, self-contained fantasy medieval settlement crafting survival sim
 - Balance of resource production vs. consumption across tiers.
 - UI scalability on small screens or high zoom levels.
 - Long-term engagement once Borough IV is reached; need for end-state or sandbox tools.
+- Farming & Hunting
+  - Tech: Farming unlocks Farm and Wheat Field (adjacency synergy).
+  - Tech: Hunting unlocks Hunters Lodge (auto-hunter unit).
+  - Tech: Tanning unlocks Tanner (boosts hunted yields).
+  - Tech: Butchery unlocks Butcher (consumes Meat ➜ Food).
+  - Tech: Blacksmithing unlocks Blacksmith (advanced tool throughput).
+  - Resource: Meat (🍖) produced by Hunters/Ranches; processed by Butchers.
+  - Behavior: Hunters periodically remove an animal on the map, spawning courier visuals and delivering to Longhouse; Tanners add 25% yields.
