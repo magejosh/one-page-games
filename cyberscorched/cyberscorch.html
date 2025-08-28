@@ -769,6 +769,13 @@ function explode(p, x, y, terrainHit){
     return;
   }
   crater(x,y,wdef.radius);
+  // settle tanks on terrain
+  for(const tk of state.tanks){
+    if(!tk.alive) continue;
+    const groundY = state.terrain.arr[tk.x|0] - 6;
+    if(groundY < tk.y) tk.y = groundY;      // push up if terrain rose
+    else if(groundY > tk.y) tk.y = groundY; // drop down to new level
+  }
   // damage tanks
   for(const tk of state.tanks){
     if(!tk.alive) continue;
