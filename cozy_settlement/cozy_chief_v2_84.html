@@ -506,7 +506,15 @@ function randAmt(k){
   return Math.floor(n.amt[0]+rng()*(n.amt[1]-n.amt[0]));
 }
 function scatterNodes(){
-  const place=(k,c)=>{ for(let i=0;i<c;i++){ let x,y; do{ x=rng()*WORLD_W|0; y=rng()*WORLD_H|0; }while(S.tiles[y][x].res || S.tiles[y][x].terrain==='water' || (x===S.avatar.x && y===S.avatar.y)); S.tiles[y][x].res={k,left:randAmt(k)}; } };
+  const place=(k,c)=>{
+    for(let i=0;i<c;i++){
+      let x,y;
+      do{ x=rng()*WORLD_W|0; y=rng()*WORLD_H|0; }
+      while(S.tiles[y][x].res || S.tiles[y][x].terrain==='water' || (x===S.avatar.x && y===S.avatar.y));
+      const amt=randAmt(k);
+      S.tiles[y][x].res={k,left:amt,resources:amt,resourceCap:amt};
+    }
+  };
   place('tree',60); place('berry',40); place('stone',30); place('clay',25); place('flax',20); place('dungeon',3);
 }
 scatterNodes();
@@ -1486,6 +1494,7 @@ function collectNode(type,gainObj,cd,msg,btn){
   const amt=Math.min(per, cell.res.left||0);
   gain({[key]:amt});
   cell.res.left = Math.max(0, (cell.res.left||0) - amt);
+  cell.res.resources = cell.res.left;
   if(cell.res.left===0){ cell.res=null; }
   redrawTiles();
   if(!S.didFirstGather){ S.didFirstGather=true; updateQuests(); }
@@ -1507,7 +1516,8 @@ function scout(){
     tries++;
     const x=rng()*WORLD_W|0, y=rng()*WORLD_H|0; const cell=S.tiles[y][x];
     if(cell.b || cell.res || cell.terrain==='water') continue;
-    cell.res={k:'crystal', left:randAmt('crystal')}; placed++;
+    const amt=randAmt('crystal');
+    cell.res={k:'crystal', left:amt, resources:amt, resourceCap:amt}; placed++;
     spawnPing(x,y); spawnGlow(x,y);
   }
   if(placed>0){ redrawTiles(); log('Scouts mark crystal outcrops on your map.'); }
