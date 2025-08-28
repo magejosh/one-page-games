@@ -727,24 +727,31 @@ function fire(tk){
   state.projectile = {x:tk.x, y:tk.y-6, vx, vy, owner:tk, weapon:tk.weapon, trail:[{x:tk.x,y:tk.y-6}]};
   updateHUD();
 }
+
+function simulateProjectile(p){
+  const dt = 1/60;
+  p.vx += state.wind*15*dt;
+  p.vy += state.gravity*dt;
+  p.x += p.vx*dt;
+  p.y += p.vy*dt;
+  if((p.trail.length%2)===0) p.trail.push({x:p.x,y:p.y});
+  // collide
+  if(p.x<0 || p.x>=canvas.width || p.y>canvas.height){
+    explode(p, p.x, clamp(p.y,0,canvas.height-1), 0); // off-screen
+    return true;
+  }
+  const ground = state.terrain.arr[p.x|0];
+  if(p.y>=ground){
+    explode(p, p.x, ground, 1);
+    return true;
+  }
+  return false;
+}
+
 function step(){
   handleInput();
   if(state.projectile){
-    const p = state.projectile;
-    const dt = 1/60;
-    p.vx += state.wind*15*dt;
-    p.vy += state.gravity*dt;
-    p.x += p.vx*dt;
-    p.y += p.vy*dt;
-    if((p.trail.length%2)===0) p.trail.push({x:p.x,y:p.y});
-    // collide
-    if(p.x<0 || p.x>=canvas.width || p.y>canvas.height){
-      explode(p, p.x, clamp(p.y,0,canvas.height-1), 0); // off-screen
-      state.projectile=null; nextTurn(); return;
-    }
-    const ground = state.terrain.arr[p.x|0];
-    if(p.y>=ground){
-      explode(p, p.x, ground, 1);
+    if(simulateProjectile(state.projectile)){
       state.projectile=null;
       nextTurn();
       return;
@@ -761,9 +768,9 @@ function explode(p, x, y, terrainHit){
       const ang = base + (i-2)*0.12;
       const spd = Math.hypot(p.vx,p.vy)*0.85;
       const child = {x:p.x,y:p.y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,owner:p.owner,weapon:"shell",trail:[]};
-      state.projectile = child; // recurse simulate each quickly
+      // Simulate child projectile without full game step or HUD/input updates
       for(let k=0;k<240;k++){ // simulate until hit
-        step(); if(!state.projectile) break;
+        if(simulateProjectile(child)) break;
       }
     }
     return;
