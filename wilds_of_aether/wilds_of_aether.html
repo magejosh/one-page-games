@@ -148,8 +148,12 @@
     <li><b>JRPG Tactical Battles:</b> Contact an enemy to trigger grid combat. Each turn: move & act. Melee (1-range), bows & spells are ranged.</li>
   </ul>
 </div></div>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 <script>
+const _lf = window.localforage;
+if(!_lf){
+  console.warn("localforage failed to load; falling back to localStorage");
+}
 /*** UTIL: RNG + Noise *********************************************************/
 function XorShift(seed=123456789){ // small fast RNG
   let x = seed|0 || 2463534242;
@@ -872,19 +876,30 @@ function dropItem(id){
 }
 
 /*** SAVE / LOAD **************************************************************/
-function saveGame(){
+async function saveGame(){
   const data = {
     seed:Game.seed, player:Game.player, entities:Game.entities,
     world:{tiles:Array.from(Game.world.tiles), res:Array.from(Game.world.res), w:Game.world.w, h:Game.world.h, spawn:Game.world.spawn},
     inv:Inventory, equip:Equip, skills:Skills, time:Game.time, hunger:Game.hunger, thirst:Game.thirst,
     xp:Game.xp, level:Game.level, inDungeon:Game.inDungeon, dungeon:Game.dungeon?{...Game.dungeon, grid:Array.from(Game.dungeon.grid)}:null
+  };
+  const json = JSON.stringify(data);
+  if(_lf){
+    try{
+      await _lf.setItem('wilds_save', json);
+    }catch(err){
+      console.warn('Save via localforage failed, using localStorage', err);
+      localStorage.setItem('wilds_save', json);
+    }
+  }else{
+    localStorage.setItem('wilds_save', json);
   }
-  localStorage.setItem('wilds_save', JSON.stringify(data));
   Game.lastSave = new Date().toLocaleString();
   toast("Game saved.");
 }
-function loadGame(){
-  const s=localStorage.getItem('wilds_save'); if(!s){ toast("No save found."); return; }
+async function loadGame(){
+  const s = _lf ? await _lf.getItem('wilds_save') : localStorage.getItem('wilds_save');
+  if(!s){ toast("No save found."); return; }
   try{
     const d=JSON.parse(s);
     Object.assign(Game, {seed:d.seed, player:d.player, entities:d.entities, time:d.time, hunger:d.hunger, thirst:d.thirst, xp:d.xp, level:d.level, inDungeon:d.inDungeon});
