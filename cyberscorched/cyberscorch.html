@@ -98,6 +98,9 @@ kbd{background:#131a38; padding:.15rem .35rem; border:1px solid #2a335f; border-
           <div class="row"><label>Starting Credits</label><input type="number" id="startCredits" min="0" value="600"></div>
           <div class="row"><label>Income / Round</label><input type="number" id="income" min="0" value="200"></div>
         </div>
+        <div class="row" style="margin-top:.6rem">
+          <label><input type="checkbox" id="showTraj"> Trajectory Guide</label>
+        </div>
       </div>
       <div class="card">
         <h3>Quick Help</h3>
@@ -217,6 +220,7 @@ const state = {
   income:200,
   skirmishRoundsRemaining:3,
   campaignLevel:0,
+  showTraj:false,
 };
 
 // ——— DOM ———
@@ -270,6 +274,7 @@ document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener("c
 refreshAIInputs();
 
 $("#startBtn").addEventListener("click", ()=>{
+  state.showTraj = $("#showTraj").checked;
   // build players
   state.players=[];
   const humans = +$("#humans").value|0;
@@ -527,6 +532,10 @@ function draw(){
     if(!tk.alive) continue;
     drawTank(tk);
   }
+  if(state.showTraj && !state.projectile){
+    const tk = currentTank();
+    if(tk && !tk.ref.isAI) drawTrajectory(tk);
+  }
   // projectile
   if(state.projectile){
     const p = state.projectile;
@@ -551,6 +560,7 @@ function drawTank(tk){
   ctx.save();
   ctx.rotate(-tk.angle*Math.PI/180);
   ctx.fillStyle="#fff"; ctx.fillRect(0,-2,14,4);
+  ctx.beginPath(); ctx.arc(14,0,3,0,6.28); ctx.fillStyle="#ff38a7"; ctx.fill();
   ctx.restore();
   // details
   ctx.fillStyle="#0008"; ctx.fillRect(-w/2,-h, w, 2);
@@ -560,6 +570,30 @@ function drawTank(tk){
   ctx.fillStyle="#0c132e"; ctx.fillRect(tk.x-20, tk.y-16, 40, 6);
   ctx.fillStyle=pct>0.5?"#00ffaa":pct>0.25?"#ffd166":"#ff3b6b";
   ctx.fillRect(tk.x-20, tk.y-16, 40*pct, 6);
+}
+function drawTrajectory(tk){
+  const ang=-tk.angle*Math.PI/180;
+  const speed=tk.power*2.6;
+  let vx=Math.cos(ang)*speed, vy=Math.sin(ang)*speed;
+  let x=tk.x, y=tk.y-6;
+  const pts=[]; const dt=1/60;
+  for(let i=0;i<180;i++){
+    vx+=state.wind*15*dt;
+    vy+=state.gravity*dt;
+    x+=vx*dt; y+=vy*dt;
+    if(x<0||x>=canvas.width||y>=canvas.height) break;
+    pts.push({x,y});
+    const ground=state.terrain.arr[x|0];
+    if(y>=ground){pts.push({x,y:ground}); break;}
+  }
+  ctx.save();
+  ctx.strokeStyle="#ffffff55";
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(tk.x, tk.y-6);
+  for(const p of pts){ ctx.lineTo(p.x,p.y); }
+  ctx.stroke();
+  ctx.restore();
 }
 function drawMini(){
   const w = canvas.width, h=canvas.height;
